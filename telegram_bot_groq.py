@@ -9,28 +9,37 @@
 #    /doctor            – Diagnotic le système
 #    /model             – Affiche les modèles disponibles
 #    /model <n>         – Change de modèle Groq (n = 1..7)
-#    /clear             – Vide l'historique de conversation (reset mémoire courte)
+#    /clear             – Vide l'historique conversation (reset mémoire courte)
 #    /mem               – Affiche la mémoire longue (faits mémorisés)
 #    /skills            – Liste les skills disponibles
 #    /reflect           – Basculer le mode Self-Reflection (On/Off)
 #    /temp <val>        – Change la qualité du modèle (0.0–1.0)
 #    /tool <nom> [args] – Exécute un outil (date, calc, shell, read, search,
-#                         mem, remember, write, net, notify, cron)
-#                         write/notify/cron demandent une confirmation
-#                          par boutons inline avant exécution réelle.
+#                         mem, remember, write, write_skill, add_theme_keyword,
+#                         audit_autonomy, reindex, forget, net, notify, cron)
+#                         write/notify/cron/forget demandent une confirmation
+#                         par boutons inline avant exécution réelle.
+#                         write_skill/add_theme_keyword restent autonomes
+#                         (sans confirmation), encadrés par des garde-fous
+#                         automatiques (dédoublonnage sémantique, score
+#                         qualité, anti-emballement) partagés avec l'auto-save
+#                         de skill déclenché par une réponse de l'agent.
 #    📷 photo/image     – Analyse l'image envoyée (qwen/qwen3.6-27b, vision)
 #                         La légende de la photo sert de question optionnelle
 #    <texte libre>      – Dialogue avec l'agent Groq
 #
 #  Architecture :
-#    Ce bot Telegram est une interface → agent_groq.py, il importe directement les fonctions de ce programme
-#    La mémoire (historique, mémoire longue, vectorielle) est partagée avec les sessions sur le terminal (Pi5) 
-#    A partir de Telegram, la sauvegarde des skills se fait automatiquement (avec une validation minimale)  
+#    Ce bot Telegram est une interface → agent_groq.py, il importe directement les 
+#    fonctions de ce programme. La mémoire (historique, mémoire longue, vectorielle)
+#    est partagée avec les sessions sur le terminal (Pi5).
+#    Côté Telegram, la sauvegarde de skill détectée dans une réponse se fait sans
+#    confirmation humaine, mais passe par les mêmes garde-fous automatiques que
+#    /tool write_skill (dédoublonnage sémantique, score qualité, anti-emballement).
 #
 #  Prérequis :
 #    pip install python-telegram-bot openai pyyaml sentence-transformers numpy --break-system-packages
-#    ~/.telegram_config  : [telegram] / token_groq + chat_id
-#    ~/.groq_config      : [groq] / api_key
+#    ~/.telegram_config                      : [telegram] / token_groq + chat_id
+#    ~/Projects/Groq_agent/.groq_config      : [groq] / api_key
 #
 #  Fichier de config Telegram à compléter :
 #    [telegram]
@@ -96,9 +105,9 @@ def charger_config() -> tuple[str, int]:
     token   = cfg["telegram"]["token_groq"].strip()
     chat_id = int(cfg["telegram"]["chat_id"].strip())
 
-    # Même réflexe que ~/.groq_config : ce fichier contient un secret
-    # (le token du bot), on s'assure qu'il n'est lisible que par le
-    # propriétaire. Best-effort — ne doit jamais bloquer le démarrage.
+    # Même réflexe que ~/Projects/Groq_agent/.groq_config : ce fichier 
+    # contient le token du bot, on s'assure qu'il n'est lisible que par
+    # le propriétaire — ne doit jamais bloquer le démarrage.
     try:
         os.chmod(cfg_path, 0o600)
     except OSError:
@@ -119,8 +128,8 @@ def _init_agent():
         logger.error(f"Clé API Groq invalide : {e}")
         sys.exit(1)
 
-    ag.init()                               # répertoires + config.yaml + readline
-    ag.load_config()                        # recharge GROQ_MODEL, MAX_TOKENS, etc.
+    ag.init()                      # répertoires + config.yaml + readline
+    ag.load_config()               # recharge GROQ_MODEL, MAX_TOKENS, etc.
 
     # Modèle d'embedding en arrière-plan
     threading.Thread(target=ag._load_embed_model, daemon=True).start()
@@ -292,6 +301,7 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Accès refusé.")
         return
 
+    ag.maybe_reload_config()  # reflète un éventuel changement fait depuis le terminal
     skills_count  = len(ag.load_skills_index())
     history       = ag.load_history()
     long_mem      = ag.load_long_memory()
@@ -319,6 +329,7 @@ async def cmd_model(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Accès refusé.")
         return
 
+    ag.maybe_reload_config()  # reflète un éventuel changement fait depuis le terminal
     args = ctx.args
 
     if not args:
@@ -465,8 +476,15 @@ async def cmd_skills(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📚 Aucun skill disponible.")
         return
 
+    # Trié par nom (comme /skills en CLI) : load_skills_index() renvoie l'ordre
+    # du système de fichiers (nom de FICHIER), qui peut différer du champ
+    # 'name' du frontmatter -- sans ce tri, la numérotation affichée ici ne
+    # correspond pas à celle du terminal, rendant /load <n°> 
+    # ambigu d'une interface à l'autre.
+    sorted_index = sorted(_skills_index, key=lambda s: s["name"].lower())
+
     lignes = ["📚 *Skills disponibles :*\n"]
-    for i, s in enumerate(_skills_index, 1):
+    for i, s in enumerate(sorted_index, 1):
         triggers = ", ".join(s.get("triggers", [])[:3])
         lignes.append(f"*{i}.* `{s['name']}` — {s['description']}\n"
                       f"   ↳ Triggers : _{triggers}_")
@@ -492,8 +510,9 @@ async def cmd_load(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     arg = ctx.args[0]
     if arg.isdigit():
         idx = int(arg) - 1
-        if 0 <= idx < len(_skills_index):
-            arg = _skills_index[idx]["name"]
+        sorted_index = sorted(_skills_index, key=lambda s: s["name"].lower())
+        if 0 <= idx < len(sorted_index):
+            arg = sorted_index[idx]["name"]
         else:
             await update.message.reply_text(f"❌ Numéro {arg} invalide.")
             return
@@ -591,20 +610,23 @@ async def callback_dispatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ------------------------------------------------------------
 TOOLS_AIDE = (
     "🛠 *Outils disponibles :* /tool\n\n"
-    "`date`- date & heure\n"
-    "`calc <expr>`- `/tool calc 2**10`\n"
-    "`shell <cmd>`- `/tool shell df -h`\n"
-    "`read <chemin>`- `~/notes.txt`\n"
-    "`search <mots>`- Recherche\n"
-    "`mem`- Affiche mémoire longue\n"
-    "`remember <fait>`- Mémorise un fait\n"
-    "`reindex`- Resynchronise les ids\n\n"
+    "`date` - date & heure\n"
+    "`\ncalc <expr>` - `/tool calc 2**10`\n"
+    "`\nshell <cmd>` - `/tool shell df -h`\n"
+    "`\nread <chemin>` - `~/notes.txt`\n"
+    "`\nsearch <mots>` - Recherche\n"
+    "`\nmem` - Affiche mémoire longue\n"
+    "`\nremember <fait>` - Mémorise un fait\n"
+    "`\nreindex` - Resynchronise les ids\n"
+    "`\nwrite_skill <nom> :: <md>`\n     - Crée/màj un skill (⚡ sans confirm)\n"
+    "`\nadd_theme_keyword <thème> :: <mot>`\n     - Ajoute mot-clé (⚡ sans confirm)\n"
+    "`\naudit_autonomy [n]`\n     - Ecritures journalisées\n\n"
     "*Outils avec confirmation :*\n"
-    "`write <fichier> :: <contenu>`\n     - Écrit dans le workspace.\n"
-    "`net <hôte>`\n     - Test connexion (ping)\n       `/tool net 1.1.1.1`\n"
-    "`notify <message>`\n     - Envoie notification Telegram\n"
-    "`forget <id>`\n     - Supprime un fait `long_mem:N` ou un échange `exchange:N` (id donné par `/tool search`)\n"
-    "`cron list|add|remove`\n     - Gère les tâches planifiées"
+    "`\nwrite <fichier> :: <contenu>`\n     - Écrit dans le workspace.\n"
+    "`\nnet <hôte>`\n     - Test connexion (ping)\n       `/tool net 1.1.1.1`\n"
+    "`\nnotify <message>`\n     - Envoie notification Telegram\n"
+    "`\nforget <id>`\n     - Suppr. un fait `long_mem:N` ou `exchange:N` (id avec `/tool search`)\n"
+    "`\ncron list|add|remove`\n     - Gère les tâches planifiées"
 )
 
 _pending_tool_actions: dict[str, tuple[str, str]] = {}
@@ -850,6 +872,15 @@ async def handler_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         _en_cours.discard(msg_id)
         return
 
+    # Un autre processus (session terminal) a pu changer le modèle/température
+    # entre-temps -- resynchronise avant de traiter ce message. Même logique
+    # que côté CLI (maybe_reload_config), les deux interfaces étant deux
+    # processus indépendants qui ne partagent leur état qu'au travers de
+    # config.yaml.
+    _model_avant = ag.GROQ_MODEL
+    if ag.maybe_reload_config() and ag.GROQ_MODEL != _model_avant:
+        await _reply(update, f"📡 _Modèle synchronisé depuis une autre session : `{ag.GROQ_MODEL}`_")
+
     # Indicateur "en train de taper…"
     await ctx.bot.send_chat_action(chat_id=update.effective_chat.id,
                                    action="typing")
@@ -910,18 +941,31 @@ async def handler_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     "_(nom vide, trop long, ou contenu insuffisant)_",
                 )
             else:
-                f = ag.save_skill(
-                    skill_data["name"],
-                    skill_data.get("description", ""),
-                    skill_data.get("triggers", []),
-                    skill_data["content"],
+                # guarded_save_skill applique les mêmes garde-fous d'autonomie que
+                # le tool write_skill (dédoublonnage sémantique, score qualité,
+                # anti-emballement) -- avant ce correctif, ce chemin appelait
+                # ag.save_skill() directement et n'en bénéficiait pas du tout,
+                # alors que c'est justement le seul des trois chemins de sauvegarde
+                # sans confirmation humaine.
+                f, msg = await asyncio.get_running_loop().run_in_executor(
+                    None, ag.guarded_save_skill,
+                    skill_data["name"], skill_data.get("description", ""),
+                    skill_data.get("triggers", []), skill_data["content"],
                 )
-                _skills_index = ag.load_skills_index()
-                await _reply(
-                    update,
-                    f"💾 *Nouveau skill sauvegardé :* `{skill_data['name']}`\n"
-                    f"_{skill_data.get('description', '')}_ → `{f.name}`",
-                )
+                if f is None:
+                    logger.info(f"Skill proposé refusé par les garde-fous : "
+                                f"name={skill_name_val!r} — {msg}")
+                    await _reply(
+                        update,
+                        f"ℹ️ *Skill non sauvegardé :* {msg}",
+                    )
+                else:
+                    _skills_index = ag.load_skills_index()
+                    await _reply(
+                        update,
+                        f"💾 *Nouveau skill sauvegardé :* `{skill_data['name']}`\n"
+                        f"_{skill_data.get('description', '')}_ → `{f.name}`",
+                    )
 
         # ── Envoi de la réponse ───────────────────────────────────────────────
         if skill_name:
@@ -931,9 +975,7 @@ async def handler_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await _reply(update, response)
 
         # ── Mise à jour des mémoires ──────────────────────────────────────────
-        history.append({"role": "user",      "content": user_input})
-        history.append({"role": "assistant", "content": response})
-        ag.save_history(history)   # invalide le cache _history_cache dans ag
+        history = ag.append_exchange_to_history(user_input, response)   # écriture atomique — invalide le cache _history_cache dans ag
 
         ag.vectorize_exchange(user_input, response, _exchange_idx)
         _exchange_idx += 1

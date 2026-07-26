@@ -12,34 +12,42 @@
 #    Memory Engine        — court terme, long terme, vectoriel, clavier
 #    Self-Reflection      — l'agent juge sa réponse (/reflect On/Off)
 #                           par defaut  /reflect est "On" - modèles 1 à 5
-#                              et "Off" pour agents web - modèles 6 et 7
+#                           et "Off" pour agents web - modèles 6 et 7
 #    Formatter            — Rich, markdown, code, tableaux
 #
-#  Autonomie (/tool write, net, notify, cron) :
-#    Ces 4 outils ont un effet de bord (fichier, réseau sortant, crontab) et
-#    demandent donc une confirmation explicite avant exécution (terminal :
-#    O/n ; Telegram : boutons inline). /tool cron ne programme JAMAIS de
-#    commande arbitraire : il planifie exclusivement une ré-exécution de ce
-#    script en mode --headless-task, qui ne dispose d'AUCUN outil (texte
-#    uniquement) — le résultat est écrit dans ~/.myagent/workspace/ puis
-#    notifié via Telegram, sans jamais toucher au shell ni au système.
+#  Autonomie (/tool write, notify, cron, forget) :
+#    Ces 4 outils ont un effet de bord (fichier, réseau sortant, crontab,
+#    suppression définitive) et demandent donc une confirmation explicite
+#    avant exécution (terminal : O/n ; Telegram : boutons inline). "net" et
+#    "cron list" restent en lecture seule, sans confirmation. /tool cron ne
+#    programme JAMAIS de commande arbitraire : il planifie exclusivement une
+#    ré-exécution de ce script en mode --headless-task, qui ne dispose
+#    d'AUCUN outil (texte uniquement) — le résultat est écrit dans
+#    ~/Projects/Groq_agent/.myagent/workspace/ puis notifié via Telegram, 
+#    sans jamais toucher au shell ni au système.
+#
+#    /tool write_skill et /tool add_theme_keyword sont volontairement EXCLUS
+#    de la confirmation : autonomie complète pour que l'agent crée/mette à jour
+#    ses propres skills et la mémoire longue, sans validation humaine. 
+#    Contrepartie : validation structurelle stricte intégrée à chacun 
+#    (voir TOOLS_REQUIRING_CONFIRMATION dans le TOOL EXECUTOR).
 #
 #  Dépendances :
 #    pip install openai pyyaml rich sentence-transformers numpy --break-system-packages
 #
 #  Fichiers :
-#    ~/.groq_config                [groq] / api_key = gsk_xxx
-#    ~/.telegram_config            [telegram] / token_groq + chat_id (pour /tool notify)
-#    ~/.myagent/config.yaml        paramètres persistants
-#    ~/.myagent/themes.yaml        thèmes et mots clés de la mémoire longue
-#    ~/.myagent/history.json       mémoire courte (conversations récentes)
-#    ~/.myagent/long_mem.json      mémoire longue (faits importants extraits)
-#    ~/.myagent/vectors.json       index vectoriel (embeddings + textes)
-#    ~/.myagent/skills/*.md        skills Markdown
-#    ~/.myagent/workspace/         fichiers écrits par /tool write et les tâches cron
-#    ~/.myagent/.readline_history  historique clavier (flèches ↑↓)
-#    ~/.myagent/events.log         pour ctrl les anomalies silencieuses
-#    ~/.myagent/cron.log           sortie des tâches planifiées (--headless-task)
+#    ~/Projects/Groq_agent/.groq_config                [groq] / api_key = gsk_xxx
+#    ~/.telegram_config                                [telegram] / token_groq + chat_id (pour /tool notify)
+#    ~/Projects/Groq_agent/.myagent/config.yaml        paramètres persistants
+#    ~/Projects/Groq_agent/.myagent/themes.yaml        thèmes et mots clés de la mémoire longue
+#    ~/Projects/Groq_agent/.myagent/history.json       mémoire courte (conversations récentes)
+#    ~/Projects/Groq_agent/.myagent/long_mem.json      mémoire longue (faits importants extraits)
+#    ~/Projects/Groq_agent/.myagent/vectors.json       index vectoriel (embeddings + textes)
+#    ~/Projects/Groq_agent/.myagent/skills/*.md        skills Markdown
+#    ~/Projects/Groq_agent/.myagent/workspace/         fichiers écrits par /tool write et les tâches cron
+#    ~/Projects/Groq_agent/.myagent/.readline_history  historique clavier (flèches ↑↓)
+#    ~/Projects/Groq_agent/.myagent/events.log         pour ctrl les anomalies silencieuses
+#    ~/Projects/Groq_agent/.myagent/cron.log           sortie des tâches planifiées (--headless-task)
 #
 #  Limites Groq (en version gratuite) :
 #    Tokens Per Minute : erreur 429, réinitialisé après 60s → /clear
@@ -153,9 +161,10 @@ def _write_json_locked(path: Path, data, **dump_kwargs):
     with _InterProcessLock(path):
         path.write_text(json.dumps(data, **dump_kwargs))
 
-BASE_DIR      = Path.home() / ".myagent"
+SCRIPT_DIR    = Path(__file__).resolve().parent   # emplacement du script, indépendant de $HOME
+BASE_DIR      = SCRIPT_DIR / ".myagent"
 SKILLS_DIR    = BASE_DIR / "skills"
-WORKSPACE_DIR = BASE_DIR / "workspace"     # seul dossier où /tool write est autorisé à écrire
+WORKSPACE_DIR = BASE_DIR / "workspace"            # seul dossier où /tool write est autorisé à écrire
 HISTORY_FILE  = BASE_DIR / "history.json"
 LONG_MEM_FILE = BASE_DIR / "long_mem.json"
 VECTORS_FILE  = BASE_DIR / "vectors.json"
@@ -163,11 +172,12 @@ CONFIG_FILE   = BASE_DIR / "config.yaml"
 THEMES_FILE   = BASE_DIR / "themes.yaml"
 EVENTS_LOG    = BASE_DIR / "events.log"
 CRON_LOG_FILE = BASE_DIR / "cron.log"
-GROQ_CFG_FILE = Path.home() / ".groq_config"
-TELEGRAM_CFG_FILE = Path.home() / ".telegram_config"
+GROQ_CFG_FILE = SCRIPT_DIR / ".groq_config"
+TELEGRAM_CFG_FILE = Path.home() / ".telegram_config"   # volontairement à part : tous les bots
+                                                       # Telegram dans ~/Projects/Telegram
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 NETWORK_TIMEOUT = 30.0   # secondes — évite qu'un thread reste bloqué sur un appel réseau qui ne répond jamais
-CRON_TAG      = "agent_groq:managed"       # marqueur des lignes crontab gérées par l'agent
+CRON_TAG      = "agent_groq:managed"              # marqueur des lignes crontab gérées par l'agent
 
 def log_event(kind: str, message: str):
     """Journalise un événement non bloquant (anomalie, avertissement) dans
@@ -180,17 +190,46 @@ def log_event(kind: str, message: str):
     except Exception:
         pass  # journalisation best-effort, ne doit jamais casser l'appelant
 
+def _autonomous_writes_today() -> int:
+    """Compte les écritures autonomes (write_skill + add_theme_keyword réussis)
+    journalisées aujourd'hui dans events.log. Sert uniquement à /doctor et au
+    garde-fou anti-emballement de execute_tool -- lecture simple du journal,
+    largement suffisante à l'échelle d'un usage personnel."""
+    if not EVENTS_LOG.exists():
+        return 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        lignes = EVENTS_LOG.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return 0
+    return sum(
+        1 for l in lignes
+        if l.startswith(today) and ("[skill_written]" in l or "[theme_updated]" in l)
+    )
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VALEURS PAR DÉFAUT
 # ══════════════════════════════════════════════════════════════════════════════
 
 GROQ_MODEL    = "llama-3.3-70b-versatile"
 MAX_TOKENS    = 2048
-MAX_HISTORY   = 15
-USER_LABEL    = "Jean-François"
-TEMPERATURE   = 0.7
+MAX_HISTORY   = 10
+USER_LABEL    = "Utilisateur"
+TEMPERATURE   = 0.5
 REFLECT_MODE  = False
 EXCHANGE_IDX  = 0
+# Garde-fou anti-emballement pour les écritures autonomes (write_skill, add_theme_keyword) : 
+# ne bloque JAMAIS l'écriture (l'autonomie reste entière), sert uniquement à faire remonter une alerte 
+# visible dans /doctor si le rythme d'écriture devient anormal (ex: skill router qui boucle sur une détection erronée).
+MAX_AUTO_WRITES_PER_DAY = 10
+
+# Plafond de taille du contenu d'un skill injecté dans le prompt système.
+# Sans ce plafond, un skill volumineux (notes de conception, backlog...) peut à lui seul dépasser le budget TPM 
+# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Llama 3.3 70B, Compound), 
+# et provoquer un échec 413 systématique -- pas une simple limite de débit ponctuelle, mais un blocage reproductible
+# à chaque appel de ce skill tant que le modèle ou le skill ne changent pas. ~3200 caractères ≈ 800 tokens,
+# une marge raisonnable même cumulée avec l'historique et la mémoire longue.
+MAX_SKILL_CONTEXT_CHARS = 3200
 
 GROQ_API_KEY  = ""
 _RL_HISTORY   = None
@@ -254,19 +293,22 @@ def load_groq_api_key() -> str:
 CONFIG_DEFAULT = """\
 # =============================================================================
 #  agent_groq.py — configuration persistante
-#  Clé API dans ~/.groq_config
+#  Clé API dans ~/Projects/Groq_agent/.groq_config
 # =============================================================================
 
 model: llama-3.3-70b-versatile
-user_label: Jean-François
+user_label: Utilisateur
 max_tokens: 2048
-max_history: 15
-temperature: 0.7
+max_history: 10
+temperature: 0.5
 reflect: false
+max_auto_writes_per_day: 10
 """
 
+_config_mtime: float = 0.0
+
 def load_config():
-    global GROQ_MODEL, MAX_TOKENS, MAX_HISTORY, USER_LABEL, TEMPERATURE, REFLECT_MODE, EXCHANGE_IDX
+    global GROQ_MODEL, MAX_TOKENS, MAX_HISTORY, USER_LABEL, TEMPERATURE, REFLECT_MODE, EXCHANGE_IDX, MAX_AUTO_WRITES_PER_DAY, _config_mtime
     if not CONFIG_FILE.exists():
         return
     try:
@@ -286,14 +328,38 @@ def load_config():
         TEMPERATURE  = float(cfg.get("temperature", TEMPERATURE))
         REFLECT_MODE = bool(cfg.get("reflect",  REFLECT_MODE))
         EXCHANGE_IDX = int(cfg.get("exchange_idx", EXCHANGE_IDX))
+        MAX_AUTO_WRITES_PER_DAY = int(cfg.get("max_auto_writes_per_day", MAX_AUTO_WRITES_PER_DAY))
+        try:
+            _config_mtime = CONFIG_FILE.stat().st_mtime
+        except OSError:
+            pass
     except Exception as e:
         console.print(f"  [yellow]⚠  Erreur config.yaml : {e}[/]")
 
+def maybe_reload_config() -> bool:
+    """CLI et bot Telegram sont deux processus indépendants, chacun avec sa
+    propre copie en mémoire de GROQ_MODEL/TEMPERATURE/REFLECT_MODE -- changer
+    de modèle sur l'un ne se voit pas sur l'autre tant qu'il n'a pas relu
+    config.yaml. Plutôt qu'un thread de sondage dédié, un simple stat() est
+    fait ici avant chaque échange : suffisant à cette fréquence d'usage et
+    sans coût perceptible. Retourne True si un autre processus a modifié
+    config.yaml depuis le dernier chargement (et recharge alors en mémoire)."""
+    global _config_mtime
+    try:
+        current_mtime = CONFIG_FILE.stat().st_mtime
+    except OSError:
+        return False
+    if current_mtime != _config_mtime:
+        load_config()
+        return True
+    return False
+
 def save_config():
+    global _config_mtime
     lines = [
         "# =============================================================================",
         "#  agent_groq.py — configuration persistante",
-        "#  Clé API dans ~/.groq_config",
+        "#  Clé API dans ~/Projects/Groq_agent/.groq_config",
         "# =============================================================================",
         "", f"model: {GROQ_MODEL}",
         f"user_label: {USER_LABEL}",
@@ -302,8 +368,13 @@ def save_config():
         f"temperature: {TEMPERATURE}",
         f"reflect: {str(REFLECT_MODE).lower()}",
         f"exchange_idx: {EXCHANGE_IDX}",
+        f"max_auto_writes_per_day: {MAX_AUTO_WRITES_PER_DAY}",
     ]
     CONFIG_FILE.write_text("\n".join(lines) + "\n")
+    try:
+        _config_mtime = CONFIG_FILE.stat().st_mtime
+    except OSError:
+        pass
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  INITIALISATION
@@ -337,7 +408,7 @@ def init():
         accueil.write_text("""---
 name: accueil
 description: Accueil et présentation de l'agent
-triggers: ["bonjour", "hello", "coucou", "test", "présente"]
+triggers: ["bonjour", "hello", "coucou", "conversation", "test", "présente"]
 ---
 # Skill accueil
 Réponds chaleureusement. Présente-toi comme un agent intelligent
@@ -374,8 +445,7 @@ import struct
 def _sync_terminal_size() -> int:
     """Lit les dimensions réelles du terminal via ioctl et met à jour COLUMNS.
     Retourne la largeur courante (colonnes), ou 80 par défaut.
-    Cette lecture force la synchronisation noyau avant que readline ne l'interroge.
-    """
+    Cette lecture force la synchronisation noyau avant que readline ne l'interroge."""
     try:
         # ioctl TIOCGWINSZ : retourne (rows, cols, xpix, ypix) en 4 × uint16
         buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
@@ -466,6 +536,38 @@ def save_history(history):
     except FileNotFoundError:
         _history_cache_mtime = None
     _history_cache = list(truncated)
+
+def append_exchange_to_history(user_message: str, assistant_response: str) -> list:
+    """Ajoute un échange (user + assistant) à history.json de façon atomique :
+    lecture, ajout et écriture sous UN SEUL verrou tenu de bout en bout.
+
+    Pourquoi : load_history() puis save_history(history) séparés (l'ancien
+    pattern) créent une fenêtre de plusieurs secondes (durée de call_groq)
+    pendant laquelle un autre processus (terminal ou bot Telegram tournant
+    en parallèle) peut charger le même historique, ajouter son propre
+    échange et sauvegarder AVANT nous — notre save_history(history) écrase
+    alors le fichier avec une copie qui ne contient pas son échange
+    ("lost update"). En relisant l'état le plus frais juste avant d'écrire,
+    sous le même verrou, les deux processus s'enchaînent proprement au lieu
+    de s'écraser mutuellement.
+
+    Retourne l'historique complet (tronqué à MAX_HISTORY) après ajout."""
+    global _history_cache, _history_cache_mtime
+    with _InterProcessLock(HISTORY_FILE):
+        try:
+            current = json.loads(HISTORY_FILE.read_text())
+        except Exception:
+            current = []
+        current.append({"role": "user", "content": user_message})
+        current.append({"role": "assistant", "content": assistant_response})
+        truncated = current[-MAX_HISTORY:]
+        HISTORY_FILE.write_text(json.dumps(truncated, ensure_ascii=False, indent=2))
+    _history_cache = list(truncated)
+    try:
+        _history_cache_mtime = HISTORY_FILE.stat().st_mtime
+    except FileNotFoundError:
+        _history_cache_mtime = None
+    return truncated
 
 def clear_history():
     global _history_cache
@@ -638,8 +740,10 @@ def format_long_memory_for_prompt(max_facts: int = 10) -> str:
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  MEMORY ENGINE — THÈMES DE CONSOLIDATION
-#  Chargés depuis ~/.myagent/themes.yaml (THEMES_FILE). 
-#  Pour ajouter ou modifier un thème : éditez ce fichier YAML.
+#  Chargés depuis ~/Projects/Groq_agent/.myagent/themes.yaml (THEMES_FILE). 
+#  Pour ajouter ou modifier un thème : /tool add_theme_keyword <thème> :: <mot-clé>
+#  (à chaud, sans redémarrage) — ou éditez directement ce fichier YAML
+#  (redémarrage requis dans ce cas pour que MEMORY_THEMES soit relu).
 #  keywords : mots-clés qui orientent le LLM lors du classement des faits.
 #  Si le fichier est absent/illisible, on repars avec _DEFAULT_MEMORY_THEMES
 #  (et on recrée un fichier YAML à partir de ces valeurs par défaut).
@@ -753,26 +857,83 @@ Règles :
 2. Pour chaque thème qui reçoit au moins un fait, rédige UNE phrase dense
    (max 150 mots) qui fusionne tous ces faits sans perdre d'information.
 3. Si aucun fait ne correspond à un thème, laisse la valeur null.
-4. Réponds UNIQUEMENT avec ce JSON, sans texte autour, sans balises :
+4. IMPORTANT : la valeur associée à chaque clé doit être UNE SIMPLE CHAÎNE
+   DE CARACTÈRES (la phrase résumée) ou null — jamais un objet, jamais une
+   liste, jamais de sous-champs comme "libellé" ou "mots-clés".
+5. Réponds UNIQUEMENT avec ce JSON, sans texte autour, sans balises :
 {{
 {themes_json_template}
-}}"""
+}}
+Exemple de format attendu pour une valeur : "theme_key": "Résumé dense en une phrase." """
 
-    try:
+    def _shape_errors(d: dict) -> list[str]:
+        """Retourne les clés dont la valeur n'est ni une string ni null/None
+        (cas observé : le LLM renvoie un objet {'libellé':..., 'mots-clés':...}
+        au lieu de la phrase résumée attendue)."""
+        return [k for k, v in d.items() if v is not None and not isinstance(v, str)]
+
+    def _call_llm(extra_instruction: str = "") -> dict:
         resp = get_client().chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=800, temperature=0.1
+            messages=[{"role": "user", "content": prompt + extra_instruction}],
+            max_tokens=800, temperature=0.1,
+            response_format={"type": "json_object"},  # force une sortie JSON syntaxiquement valide
         )
         raw = resp.choices[0].message.content.strip()
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw).strip()
-        consolidated = json.loads(raw)
+        return json.loads(raw)
+
+    try:
+        consolidated = _call_llm()
         if not isinstance(consolidated, dict):
             return {"avant": n_avant, "apres": n_avant,
                     "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
+
+        bad_keys = _shape_errors(consolidated)
+        if bad_keys:
+            # Un seul essai de plus avant d'abandonner : le mode JSON strict
+            # échoue rarement sur la syntaxe, mais un petit modèle peut encore
+            # halluciner une structure imbriquée au lieu d'une simple phrase.
+            log_event("memory_consolidation_shape_retry",
+                       f"Valeurs non-string renvoyées pour {bad_keys}, nouvelle tentative")
+            consolidated = _call_llm("\n\nRappel : chaque valeur doit être une chaîne "
+                                      "de caractères simple, jamais un objet ni une liste.")
+            if not isinstance(consolidated, dict):
+                return {"avant": n_avant, "apres": n_avant,
+                        "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
+    except json.JSONDecodeError as e:
+        # Un seul essai de plus avant d'abandonner : le mode JSON strict
+        # échoue rarement, mais un rappel explicite dans le prompt suffit
+        # généralement à corriger une sortie tronquée par max_tokens.
+        try:
+            log_event("memory_consolidation_json_retry", f"1er essai invalide ({e}), nouvelle tentative")
+            consolidated = _call_llm("\n\nRappel : réponds avec un JSON valide et complet, sans troncature.")
+            if not isinstance(consolidated, dict):
+                return {"avant": n_avant, "apres": n_avant,
+                        "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
+        except Exception as e2:
+            return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
     except Exception as e:
         return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
+
+    # Filet de sécurité : si, malgré le prompt renforcé et la tentative de
+    # secours, une valeur est encore un objet/liste, on la convertit en texte
+    # lisible plutôt que d'exposer une représentation Python brute (le bug
+    # observé le 14/07 : "{'libellé': 'Profil utilisateur', 'mots-clés': ...}").
+    still_bad = _shape_errors(consolidated)
+    if still_bad:
+        log_event("memory_consolidation_shape_fallback",
+                   f"Coercion de secours appliquée pour {still_bad} (toujours non-string après retry)")
+        for k in still_bad:
+            v = consolidated[k]
+            if isinstance(v, dict):
+                texte = next((val for val in v.values() if isinstance(val, str)), None)
+                consolidated[k] = texte or " ; ".join(str(x) for x in v.values())
+            elif isinstance(v, list):
+                consolidated[k] = " ; ".join(str(x) for x in v)
+            else:
+                consolidated[k] = str(v)
 
     # Validation de schéma : le LLM peut hallucinier une clé absente de
     # MEMORY_THEMES (faute de frappe, thème renommé...). 
@@ -967,6 +1128,36 @@ def vectorize_exchange(user_msg: str, agent_resp: str, idx: int):
     threading.Thread(target=_vectorize_text,
                      args=(text, f"exchange:{idx}"), daemon=True).start()
 
+def _find_similar_skill(candidate_text: str, threshold: float = 0.85) -> tuple[str | None, float]:
+    """Dédoublonnage sémantique des skills, en complément de _skill_already_exists
+    (qui ne compare que le texte brut nom+description par Jaccard). Compare
+    l'embedding du candidat aux skills déjà vectorisés (vectors.json, ids
+    'skill:*') par similarité cosinus -- capte les reformulations qu'une
+    comparaison textuelle manquerait.
+    Best-effort et fail-open : si le modèle d'embedding n'est pas encore chargé
+    ou si l'embedding échoue, ne bloque rien (renvoie (None, 0.0)) plutôt que
+    de retarder une écriture autonome sur un souci d'infrastructure.
+    Renvoie (nom_du_skill_le_plus_proche, score) si un doublon probable est
+    détecté (score >= threshold), sinon (None, 0.0)."""
+    if _embed_model is None:
+        return None, 0.0
+    vec = _get_embedding(candidate_text)
+    if vec is None:
+        return None, 0.0
+    best_name, best_score = None, 0.0
+    for entry in _load_vectors():
+        if not entry["id"].startswith("skill:"):
+            continue
+        try:
+            score = _cosine(vec, entry["vector"])
+        except Exception:
+            continue
+        if score > best_score:
+            best_score, best_name = score, entry["id"].split(":", 1)[1]
+    if best_score >= threshold:
+        return best_name, best_score
+    return None, 0.0
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  SKILL ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -991,19 +1182,22 @@ def load_skills_index() -> list:
     for f in sorted(SKILLS_DIR.glob("*.md")):
         content = f.read_text()
         match = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
-        if match:
-            try:
-                meta = yaml.safe_load(match.group(1))
-                body = re.sub(r'^---\n.*?\n---\n', '', content, flags=re.DOTALL).strip()
-                skills.append({
-                    "name":        meta.get("name", f.stem),
-                    "description": meta.get("description", ""),
-                    "triggers":    meta.get("triggers", []),
-                    "file":        f.name,
-                    "body":        body,
-                })
-            except Exception:
-                pass
+        if not match:
+            log_event("skill_parse_error", f"{f.name} : pas de frontmatter YAML "
+                      f"détecté (délimiteurs '---' manquants ou mal formés) — skill ignoré")
+            continue
+        try:
+            meta = yaml.safe_load(match.group(1))
+            body = re.sub(r'^---\n.*?\n---\n', '', content, flags=re.DOTALL).strip()
+            skills.append({
+                "name":        meta.get("name", f.stem),
+                "description": meta.get("description", ""),
+                "triggers":    meta.get("triggers", []),
+                "file":        f.name,
+                "body":        body,
+            })
+        except Exception as e:
+            log_event("skill_parse_error", f"{f.name} : YAML invalide ({e}) — skill ignoré")
     _skills_index_cache = skills
     _skills_index_sig = sig
     return skills
@@ -1169,25 +1363,47 @@ def _cron_commit_remove(cid: str) -> str:
         return f"❌ Erreur écriture crontab : {e}"
 
 TOOLS = {
-    "date":     "Affiche la date et l'heure",
-    "calc":     "Calcule expression math.             ex: /tool calc 2*10",
-    "shell":    "Exécute une cde simple               ex: /tool shell df -h",
-    "read":     "Lit un fichier texte                 ex: /tool read ~/notes.txt",
-    "search":   "Rech. sémantique Mém.                ex: /tool search raspberry",
-    "mem":      "Affiche la mémoire longue            ex: /tool mem",
-    "remember": "Ajoute en mémoire lg                 ex: /tool remember J'aime Python",
-    "forget":   "Suppr. lg mem. / exchange (id)  ex: /tool forget exchange:00",
-    "reindex":  "Resynchronise les ids                ex: /tool reindex",
-    "write":    "Écrit dans le workspace              ex: /tool write notes.md :: contenu",
-    "net":      "Teste connexion réseau (ping)        ex: /tool net api.groq.com",
-    "notify":   "Envoie message Telegram              ex: /tool notify Tâche terminée",
-    "cron":     "Gère les tâches planifiées           ex: /tool cron list | add | remove",
+    "date":              "Affiche la date & l'heure",
+    "calc":              "Calcule expression math.          ex: /tool calc 2*10",
+    "shell":             "Exécute une cde simple            ex: /tool shell df -h",
+    "read":              "Lit un fichier texte              ex: /tool read ~/notes.txt",
+    "search":            "Rech. sémantique Mém.             ex: /tool search raspberry",
+    "mem":               "Affiche la mémoire longue         ex: /tool mem",
+    "remember":          "Ajoute en mémoire lg              ex: /tool remember J'aime Python",
+    "forget":            "Mem lg/exchange (id)              ex: /tool forget exchange:00",
+    "reindex":           "Resynchronise les ids             ex: /tool reindex",
+    "write":             "Écrit dans le workspace           ex: /tool write notes.md :: contenu",
+    "write_skill":       "Crée/màj un skill                 ex: /tool write_skill demo :: ---\\nname: demo\\n...",
+    "add_theme_keyword": "Mot-clé/...                       ex: /tool add_theme_keyword raspberry_pi :: gpio",
+    "audit_autonomy":    "Ecritures auto                    ex: /tool audit_autonomy 20",
+    "net":               "Teste connexion réseau (ping)     ex: /tool net api.groq.com",
+    "notify":            "Envoie message Telegram           ex: /tool notify Tâche terminée",
+    "cron":              "Gère les tâches planifiées        ex: /tool cron list | add | remove",
 }
 
 # Outils à effet de bord persistant ou sortant : une confirmation explicite est
 # demandée avant exécution réelle (côté terminal : input O/n ; côté Telegram :
 # boutons inline). "cron list" et "net" restent en lecture seule, sans confirmation,
 # au même titre que "shell"/"read"/"search" qui ne modifient rien.
+#
+# write_skill et add_theme_keyword sont volontairement EXCLUS de cette liste :
+# pour donner à l'agent une autonomie d'évolution complète sur ses propres skills
+# et sur la mémoire longue, sans validation humaine préalable. Contrepartie : ces deux
+# tools portent leur propre validation structurelle stricte (frontmatter YAML
+# obligatoire pour un skill, dédoublonnage et parsing YAML validé pour un
+# thème) puisqu'il n'y a plus de garde-fou humain derrière.
+#
+# Garde-fous automatisés additionnels (aucun n'ajoute de confirmation humaine,
+# tous préservent l'autonomie) :
+#   - dédoublonnage sémantique par similarité vectorielle (_find_similar_skill),
+#     en plus du Jaccard textuel de _skill_already_exists
+#   - second regard qualité par LLM léger avant écriture (_llm_score_skill_quality),
+#     même principe que le Self-Reflection Engine
+#   - traçabilité : chaque écriture autonome reste journalisée dans events.log
+#     (skill_written, theme_updated, skill_deduped, skill_quality_rejected) et
+#     consultable via /tool audit_autonomy, sans jamais bloquer l'agent
+#   - garde-fou anti-emballement purement informatif (MAX_AUTO_WRITES_PER_DAY),
+#     visible dans /doctor, qui n'empêche jamais une écriture
 TOOLS_REQUIRING_CONFIRMATION = {"write", "cron", "notify", "forget"}
 
 def tool_call_needs_confirmation(tool: str, args: str) -> bool:
@@ -1241,6 +1457,7 @@ def preview_tool_action(tool: str, args: str) -> str:
     return f"⚙️ Exécuter /tool {tool} {args}"
 
 def execute_tool(tool: str, args: str) -> str:
+    global MEMORY_THEMES
     tool = tool.lower().strip()
     if tool == "date":
         return datetime.now().strftime("📅 %A %d %B %Y — %H:%M:%S")
@@ -1394,6 +1611,95 @@ def execute_tool(tool: str, args: str) -> str:
             return f"✅ Fichier écrit : {cible}  ({len(contenu)} car.)"
         except Exception as e:
             return f"❌ Erreur écriture : {e}"
+    elif tool == "write_skill":
+        if "::" not in args:
+            return "❌ Usage : /tool write_skill <nom> :: <contenu markdown avec frontmatter>"
+        nom, contenu = (p.strip() for p in args.split("::", 1))
+        if not nom or not contenu:
+            return "❌ Usage : /tool write_skill <nom> :: <contenu markdown avec frontmatter>"
+        if "/" in nom or "\\" in nom or nom.startswith("."):
+            return "❌ Nom de fichier invalide (pas de chemin, pas de fichier caché)"
+        if not nom.endswith(".md"):
+            nom += ".md"
+        if len(contenu) > 200_000:
+            return "❌ Contenu trop volumineux (max 200 000 caractères)"
+        # Validation structurelle : load_skills_index() avale silencieusement
+        # (except: pass) tout fichier au frontmatter invalide -- un skill mal
+        # formé écrit ici resterait un fichier fantôme, jamais routé. On
+        # préfère un refus explicite et immédiat.
+        match = re.match(r'^---\n(.*?)\n---', contenu, re.DOTALL)
+        if not match:
+            return ("❌ Frontmatter YAML manquant — un skill doit commencer par :\n"
+                    "---\nname: ...\ndescription: ...\ntriggers: [...]\n---")
+        try:
+            meta = yaml.safe_load(match.group(1))
+        except yaml.YAMLError as e:
+            return f"❌ Frontmatter YAML invalide : {e}"
+        if not isinstance(meta, dict) or not meta.get("name") or not meta.get("description"):
+            return "❌ Frontmatter incomplet — les clés 'name' et 'description' sont requises"
+
+        nom_stem = nom[:-3] if nom.endswith(".md") else nom
+        body = contenu[match.end():].lstrip("\n")
+
+        f, msg = guarded_save_skill(meta["name"], meta["description"],
+                                     meta.get("triggers", []), body)
+        if f is None:
+            return f"ℹ️ Skill non créé : {msg}"
+        return (f"✅ Skill écrit : {f}  ({len(body)} car.) — "
+                f"pris en compte automatiquement dès le prochain message")
+    elif tool == "add_theme_keyword":
+        if "::" not in args:
+            return "❌ Usage : /tool add_theme_keyword <thème> :: <mot-clé>"
+        theme_in, keyword = (p.strip() for p in args.split("::", 1))
+        if not theme_in or not keyword:
+            return "❌ Usage : /tool add_theme_keyword <thème> :: <mot-clé>"
+        if len(keyword) > 100:
+            return "❌ Mot-clé trop long (max 100 caractères)"
+        try:
+            # relit depuis le disque plutôt que d'utiliser le cache MEMORY_THEMES
+            # en mémoire, pour ne pas écraser une édition manuelle faite
+            # entretemps directement dans themes.yaml.
+            themes = _load_memory_themes()
+
+            theme_key = theme_in if theme_in in themes else None
+            if theme_key is None:
+                for k, meta in themes.items():
+                    if meta.get("label", "").strip().lower() == theme_in.strip().lower():
+                        theme_key = k
+                        break
+            created = False
+            if theme_key is None:
+                theme_key = re.sub(r'[^\w]+', '_', theme_in.strip().lower()).strip('_') or "theme"
+                if theme_key in themes:
+                    return f"❌ Conflit : la clé générée '{theme_key}' existe déjà avec un autre libellé"
+                themes[theme_key] = {"label": theme_in.strip(), "keywords": []}
+                created = True
+
+            kws = themes[theme_key].setdefault("keywords", [])
+            if any(k.strip().lower() == keyword.strip().lower() for k in kws):
+                return f"ℹ️ Le mot-clé '{keyword}' est déjà présent dans le thème '{theme_key}'"
+            kws.append(keyword.strip())
+
+            # Garde-fou anti-emballement, informatif seulement (voir write_skill
+            # ci-dessus pour le même mécanisme) : n'empêche jamais l'écriture.
+            if _autonomous_writes_today() == MAX_AUTO_WRITES_PER_DAY:
+                log_event("auto_write_rate_alert",
+                          f"seuil de {MAX_AUTO_WRITES_PER_DAY} écritures autonomes/jour atteint")
+
+            BASE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(THEMES_FILE, "w", encoding="utf-8") as f:
+                yaml.dump(themes, f, allow_unicode=True, sort_keys=False,
+                          default_flow_style=False)
+
+            MEMORY_THEMES = themes  # rechargement à chaud -- pas de redémarrage requis
+
+            log_event("theme_updated",
+                      f"{theme_key} += '{keyword}'" + (" (nouveau thème)" if created else ""))
+            verbe = "créé" if created else "mis à jour"
+            return (f"✅ Thème '{theme_key}' {verbe} — mot-clé '{keyword}' ajouté "
+                    f"({len(kws)} mot(s)-clé(s) au total)")
+        except Exception as e:
+            return f"❌ Erreur mise à jour themes.yaml : {e}"
     elif tool == "net":
         if not args:
             return "❌ Usage : /tool net <hôte>  ex: /tool net api.groq.com"
@@ -1454,6 +1760,26 @@ def execute_tool(tool: str, args: str) -> str:
         elif sous_cmd == "remove":
             return _cron_commit_remove(reste)
         return "❌ Sous-commande inconnue. Utilise : list | add | remove"
+    elif tool == "audit_autonomy":
+        n = 10
+        if args.strip():
+            try:
+                n = max(1, min(int(args.strip()), 100))
+            except ValueError:
+                return "❌ Usage : /tool audit_autonomy [n]  (n = nombre d'entrées, défaut 10)"
+        if not EVENTS_LOG.exists():
+            return "ℹ️ Aucune action autonome journalisée pour l'instant."
+        kinds = ("[skill_written]", "[theme_updated]", "[skill_deduped]", "[skill_quality_rejected]")
+        try:
+            lignes = EVENTS_LOG.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except Exception as e:
+            return f"❌ Erreur lecture du journal : {e}"
+        pertinentes = [l for l in lignes if any(k in l for k in kinds)]
+        if not pertinentes:
+            return "ℹ️ Aucune action autonome journalisée pour l'instant."
+        dernieres = pertinentes[-n:]
+        return (f"🔍 **{len(dernieres)} dernière(s) action(s) autonome(s)** "
+                f"(skills/thèmes) :\n" + "\n".join(dernieres))
     else:
         return f"❌ Outil inconnu : '{tool}'\n   Disponibles : {', '.join(TOOLS.keys())}"
 
@@ -1466,6 +1792,13 @@ def build_system_prompt(skills_index: list,
                         vector_context: str | None = None) -> str:
     skills_list  = ("\n".join(f"- {s['name']}: {s['description']}" for s in skills_index)
                     if skills_index else "(aucun skill)")
+    if active_skill_content and len(active_skill_content) > MAX_SKILL_CONTEXT_CHARS:
+        active_skill_content = (
+            active_skill_content[:MAX_SKILL_CONTEXT_CHARS]
+            + f"\n\n[…skill tronqué à {MAX_SKILL_CONTEXT_CHARS} car. — "
+              f"contenu complet trop volumineux pour tenir dans le budget "
+              f"tokens/minute du modèle actuel, voir /load pour le lire en entier]"
+        )
     skill_block  = (f"\n\n## Skill actif\n{active_skill_content}"
                     if active_skill_content else "")
     vector_block = (f"\n\n## Contexte sémantique\n{vector_context}"
@@ -1502,6 +1835,21 @@ Ne propose JAMAIS un skill si :
 - Ta réponse est une explication générale ou une réponse conversationnelle.
 - Un skill couvrant déjà ce sujet existe dans la liste des skills disponibles ci-dessus.
 - La réponse fait moins de 150 mots.
+- La règle 3 est déclenchée par une tâche RÉCURRENTE/PLANIFIÉE (voir section suivante) : dans ce cas c'est un cron, pas un skill.
+
+## Skills vs tâches planifiées (cron) — ne jamais confondre
+Un skill est un contenu de RÉFÉRENCE que tu relis en conversation (procédure, savoir-faire,
+configuration). Son contenu n'est JAMAIS exécuté automatiquement, même s'il contient du code :
+tu le lis comme du texte, rien de plus.
+
+Si la tâche doit s'exécuter seule, à intervalle régulier (scraping quotidien, sauvegarde
+périodique, contrôle planifié...), ce n'est PAS un skill. Propose :
+1. `/tool write <nom>.py :: <code>` — un script à EXÉCUTION UNIQUE (pas de `while True`,
+   pas de `sleep`), écrit dans le workspace. C'est cron qui le relance, pas le script lui-même.
+2. `/tool cron add <m> <h> <dom> <mon> <dow> :: <description>` — pour planifier son exécution réelle.
+Un skill peut ensuite documenter *le résultat* de cette tâche planifiée (emplacement du fichier
+de sortie, format, comment l'interpréter), mais ne doit jamais contenir le code exécutable
+avec sa propre boucle.
 
 Si un skill est justifié, l'inclure OBLIGATOIREMENT dans ce format exact :
 
@@ -1682,10 +2030,20 @@ def analyze_image(image_path: str, question: str = "") -> str:
     })
 
     try:
+        # VISION_MODEL (qwen/qwen3.6-27b) est fixe, indépendant de /model --
+        # et fait partie des modèles à faible quota (6000 tokens/min), d'où
+        # un plafond de sécurité. Mais c'est aussi un modèle de raisonnement
+        # (comme observé en Test 4 sur le modèle texte équivalent) : un
+        # plafond trop bas (800, aligné sur les modèles compound qui ne
+        # raisonnent pas en interne) coupe la réponse avant la fin du <think>
+        # -- _strip_think évite la fuite brute mais la réponse reste vide.
+        # 1500 laisse la marge nécessaire au raisonnement tout en restant
+        # sous le MAX_TOKENS par défaut (2048).
+        effective_max_tokens = min(MAX_TOKENS, 1500)
         resp = get_client().chat.completions.create(
             model=VISION_MODEL,
             messages=messages,
-            max_tokens=MAX_TOKENS,
+            max_tokens=effective_max_tokens,
             temperature=TEMPERATURE,
         )
         result = resp.choices[0].message.content
@@ -1699,7 +2057,7 @@ def analyze_image(image_path: str, question: str = "") -> str:
         elif "413" in err:
             return "⚠  Image trop volumineuse pour l'API Groq (max 20 MB)."
         elif "400" in err:
-            return f"⚠  Requête invalide — vérifie le format de l'image.\n   Détail : {err[:200]}"
+            return "⚠  Requête invalide — vérifie le format de l'image (détail dans events.log)."
         else:
             return f"⚠  Erreur analyse image : {err[:200]}"
 
@@ -1796,17 +2154,30 @@ def call_groq(system_prompt: str, history: list, user_message: str) -> str:
             err = str(e)
 
             # Erreurs définitives : pas de retry, on répond immédiatement
-            if "429" in err or "TPM" in err or "413" in err:
-                return "⚠  Limite Groq atteinte — tape /clear."
+            if "413" in err:
+                # Requête trop volumineuse pour ce modèle -- structurel, pas transitoire.
+                # Se reproduira à l'identique tant que le skill/contexte ou le modèle
+                # ne changent pas ; ne jamais le confondre avec un 429 qui, lui, se
+                # résout en attendant.
+                return ("⚠  Requête trop volumineuse pour ce modèle (413) — le skill actif "
+                        "ou le contexte dépassent son budget tokens. Essaie /model 2 ou "
+                        "/model 5 (30k tokens/min) plutôt que de réessayer sur ce modèle.")
+            if "429" in err or "TPM" in err:
+                return f"⚠  Limite Groq atteinte{_extract_rate_limit_detail(err)}"
             if "404" in err:
                 return f"⚠  Modèle introuvable : {GROQ_MODEL} — tape /model"
             if "401" in err or "403" in err:
-                return "⚠  Clé API Groq refusée — vérifie ~/.groq_config."
+                return "⚠  Clé API Groq refusée — vérifie ~/Projects/Groq_agent/.groq_config"
 
-            # Erreurs transitoires (réseau, 5xx, timeout) : on retente avec backoff
-            transient = any(s in err for s in (
-                "500", "502", "503", "504", "Timeout", "timeout",
-                "Connection", "connection", "ServerError"
+            # Erreurs transitoires (réseau, 5xx, timeout) : on retente avec backoff.
+            # Comparaison insensible à la casse sur err.lower() : le SDK formule un
+            # timeout "Request timed out." (verbe, jamais vu par l'ancien motif
+            # "Timeout"/"timeout" qui ne cherchait que le nom) -- une coupure réseau
+            # en cours de requête (pas seulement avant l'envoi) le confirme.
+            err_lower = err.lower()
+            transient = any(s in err_lower for s in (
+                "500", "502", "503", "504", "timeout", "timed out",
+                "connection", "server error", "servererror"
             ))
             if transient and attempt < MAX_RETRIES - 1:
                 _time_module.sleep(BACKOFF_BASE * (2 ** attempt))
@@ -1843,7 +2214,8 @@ Sinon, donne UNIQUEMENT la version améliorée, sans introduction ni commentaire
 #  SKILL DETECTOR  — détection proactive d'opportunité de création de skill
 #
 #  Fonctionnement :
-#    Appelé en thread daemon après chaque échange (comme extract_and_store_facts).
+#    Soumis au pool borné _BACKGROUND_EXECUTOR après chaque échange (comme
+#    extract_and_store_facts) plutôt qu'un thread daemon brut par appel.
 #    Utilise llama-3.1-8b-instant pour analyser si l'échange contient une
 #    procédure ou configuration réutilisable qui mérite un skill.
 #    Si oui : retourne un dict {name, description, triggers, content} et
@@ -1866,6 +2238,43 @@ Sinon, donne UNIQUEMENT la version améliorée, sans introduction ni commentaire
 _pending_skill: dict | None = None
 _pending_skill_lock = threading.Lock()
 
+def _llm_score_skill_quality(name: str, description: str, content: str) -> float:
+    """Second regard automatique sur un skill candidat, sur le même principe que
+    le Self-Reflection Engine (/reflect) : un appel LLM léger et rapide évalue
+    3 critères de qualité avant écriture, sans jamais demander de confirmation
+    humaine -- l'autonomie de write_skill reste entière, ce garde-fou est
+    entièrement automatisé.
+    Fail-open : toute erreur (réseau, parsing JSON...) renvoie 1.0 (score max)
+    pour ne jamais bloquer une écriture sur un simple accident technique --
+    cohérent avec le traitement de extract_and_store_facts / detect_skill_opportunity
+    ailleurs dans le fichier."""
+    prompt = f"""Évalue ce skill candidat sur 3 critères. Réponds UNIQUEMENT avec ce JSON,
+sans texte autour : {{"pertinent": bool, "autonome": bool, "non_trivial": bool}}
+
+Nom : {name}
+Description : {description}
+Contenu (extrait) : {content[:600]}
+
+- pertinent : correspond à un vrai besoin réutilisable, pas une réponse ponctuelle
+- autonome : le contenu se suffit à lui-même, sans dépendre du contexte de la
+  conversation qui l'a généré
+- non_trivial : contient une information ou une procédure utile, pas une
+  évidence ou une simple définition"""
+    try:
+        resp = get_client().chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100, temperature=0.1,
+        )
+        raw = resp.choices[0].message.content.strip()
+        raw = re.sub(r'^```(?:json)?\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw).strip()
+        verdict = json.loads(raw)
+        criteres = [verdict.get("pertinent"), verdict.get("autonome"), verdict.get("non_trivial")]
+        return sum(1 for c in criteres if c is True) / 3
+    except Exception:
+        return 1.0  # fail-open : ne bloque jamais sur un accident technique
+
 def _skill_already_exists(name: str, description: str, skills_index: list,
                            threshold: float = 0.50) -> bool:
     """Vérifie si un skill similaire existe déjà (Jaccard sur name+description)."""
@@ -1882,7 +2291,7 @@ def _skill_already_exists(name: str, description: str, skills_index: list,
 def detect_skill_opportunity(user_msg: str, agent_response: str,
                               skills_index: list) -> None:
     """Analyse l'échange et stocke un skill candidat dans _pending_skill si pertinent.
-    Conçu pour être appelé en thread daemon — ne lève jamais d'exception."""
+    Conçu pour être soumis à _BACKGROUND_EXECUTOR — ne lève jamais d'exception."""
     global _pending_skill
 
     # Garde-fous rapides (sans appel LLM)
@@ -1944,6 +2353,11 @@ Si OUI : {{"create": true, "name": "nom_snake_case", "description": "description
             return
         if _skill_already_exists(name, desc, skills_index):
             return
+        # Dédoublonnage sémantique en complément du Jaccard ci-dessus (capte les
+        # reformulations : même skill décrit avec des mots différents).
+        similar_name, _ = _find_similar_skill(f"{name}: {desc} {str(result.get('content', ''))[:500]}")
+        if similar_name:
+            return
 
         with _pending_skill_lock:
             _pending_skill = {
@@ -1955,7 +2369,7 @@ Si OUI : {{"create": true, "name": "nom_snake_case", "description": "description
             }
 
     except Exception:
-        pass   # silencieux : thread daemon, ne doit jamais bloquer
+        pass   # silencieux : tâche de fond (pool borné), ne doit jamais bloquer l'appelant
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  FORMATTER
@@ -1994,11 +2408,60 @@ created: {datetime.now().strftime('%Y-%m-%d')}
     vectorize_skill(name, f"{description} {content}")
     return f
 
+def guarded_save_skill(name: str, description: str, triggers: list,
+                        content: str) -> tuple[Path | None, str]:
+    """Point d'entrée unique pour toute écriture autonome de skill (write_skill,
+    détection CLI confirmée par l'utilisateur, auto-save Telegram sans
+    confirmation), pour que les trois chemins bénéficient des mêmes garde-fous
+    et de la même traçabilité -- avant ce correctif, seul le tool write_skill
+    en profitait, save_skill() étant appelée directement ailleurs sans aucun
+    des trois contrôles ni journalisation.
+    Retourne (chemin, message) si le skill est écrit, ou (None, raison) s'il
+    est refusé -- l'appelant reste responsable de l'affichage adapté à son
+    interface (CLI, Telegram)."""
+    safe_name = re.sub(r'[^\w\-]', '_', name)
+
+    # Garde-fou n°0, avant même le dédoublonnage/score (évite deux appels LLM
+    # inutiles) : un skill trop long serait de toute façon tronqué à l'injection
+    # (build_system_prompt, MAX_SKILL_CONTEXT_CHARS) -- autant empêcher l'agent
+    # d'en créer un dès l'écriture plutôt que de laisser une version tronquée,
+    # potentiellement incohérente, s'installer silencieusement. Ce plafond ne
+    # couvre que la création AUTONOME (write_skill, détection CLI/Telegram) ;
+    # un fichier .md déposé manuellement dans skills/ n'y passe jamais -- c'est
+    # justement pour ça que le plafond à l'injection reste nécessaire en plus.
+    if len(content) > MAX_SKILL_CONTEXT_CHARS:
+        log_event("skill_too_long_rejected",
+                  f"'{name}' — {len(content)} car. > plafond {MAX_SKILL_CONTEXT_CHARS}")
+        return None, (f"contenu trop long ({len(content)} car., plafond {MAX_SKILL_CONTEXT_CHARS}) "
+                       f"— condense-le à l'essentiel, un skill trop détaillé sera de toute "
+                       f"façon tronqué à l'injection")
+
+    similar_name, sim_score = _find_similar_skill(f"{name}: {description} {content[:500]}")
+    if similar_name and similar_name != safe_name:
+        log_event("skill_deduped", f"'{name}' ~ '{similar_name}' (score={sim_score:.2f})")
+        return None, (f"trop proche du skill existant '{similar_name}' "
+                       f"(similarité {sim_score:.0%}) — mets-le à jour plutôt que d'en créer un nouveau")
+
+    quality = _llm_score_skill_quality(name, description, content)
+    if quality < 0.6:
+        log_event("skill_quality_rejected", f"'{name}' — score qualité {quality:.2f}")
+        return None, (f"score de pertinence insuffisant ({quality:.0%}) — contenu trop "
+                       f"ponctuel ou peu autonome pour devenir un skill réutilisable")
+
+    if _autonomous_writes_today() == MAX_AUTO_WRITES_PER_DAY:
+        log_event("auto_write_rate_alert",
+                  f"seuil de {MAX_AUTO_WRITES_PER_DAY} écritures autonomes/jour atteint")
+
+    f = save_skill(name, description, triggers, content)
+    log_event("skill_written", f"{f.name} ({len(content)} car.)")
+    return f, "ok"
+
 def delete_skill(name: str, skills_index: list):
     if name.isdigit():
+        sorted_index = sorted(skills_index, key=lambda s: s["name"].lower())
         idx = int(name) - 1
-        if 0 <= idx < len(skills_index):
-            name = skills_index[idx]["name"]
+        if 0 <= idx < len(sorted_index):
+            name = sorted_index[idx]["name"]
         else:
             console.print(f"  [red]❌ Numéro {name} invalide.[/]")
             return
@@ -2124,7 +2587,7 @@ def list_skills(skills_index: list):
     t.add_column("N°",          style="yellow", width=4,  justify="right")
     t.add_column("Nom",         style="green",  width=28)
     t.add_column("Description", style="white")   # sans width fixe : Rich s'adapte
-    for i, s in enumerate(skills_index, 1):
+    for i, s in enumerate(sorted(skills_index, key=lambda s: s["name"].lower()), 1):
         t.add_row(str(i) + ".", s["name"], s["description"])
     console.print()
     console.print(t)
@@ -2133,11 +2596,11 @@ def list_skills(skills_index: list):
 def show_tools():
     _sync_terminal_size()
     w      = shutil.get_terminal_size().columns
-    w_desc = max(w - 10 - 12, 20)   # Outil 12
+    w_desc = max(w - 7 - 18, 20)    # overhead=7 pour 2 colonnes (3*n+1), aligne la largeur totale sur /help
     t = Table(title="Outils disponibles (/tool)", box=rbox.ROUNDED,
               border_style="cyan", header_style="bold yellow",
               title_style="bold cyan", show_lines=False)
-    t.add_column("Outil",       style="cyan",  width=12)
+    t.add_column("Outil",       style="cyan",  width=18)
     t.add_column("Description", style="white", width=w_desc)
     for name, desc in TOOLS.items():
         t.add_row(name, desc)
@@ -2148,7 +2611,7 @@ def show_tools():
 def show_help():
     _sync_terminal_size()
     w    = shutil.get_terminal_size().columns
-    w_ex = max(w - 10 - 18 - 26, 20)   # Commande 18 Description 26
+    w_ex = max(w - 10 - 18 - 26, 20)   # Commande = 18 Description 26
     t = Table(title="Commandes disponibles", box=rbox.ROUNDED,
               border_style="cyan", header_style="bold yellow",
               title_style="bold cyan", show_lines=False)
@@ -2188,7 +2651,7 @@ def show_help():
 def show_config():
     _sync_terminal_size()
     w     = shutil.get_terminal_size().columns
-    w_val = max(w - 10 - 18 - 16, 20)   # fixes : Paramètre18 Commande16
+    w_val = max(w - 10 - 18 - 16, 20)   # fixes : Paramètre = 18 Commande = 16
     t = Table(title="Configuration actuelle", box=rbox.ROUNDED,
               border_style="cyan", header_style="bold yellow",
               title_style="bold cyan", show_lines=False)
@@ -2204,6 +2667,7 @@ def show_config():
         ("max_history", str(MAX_HISTORY),        "/history_size"),
         ("temperature", str(TEMPERATURE),        "/temp"),
         ("reflect",     str(REFLECT_MODE),       "/reflect"),
+        ("auto_writes/j", f"{_autonomous_writes_today()}/{MAX_AUTO_WRITES_PER_DAY}", "config.yaml"),
         ("mém. longue", f"{len(mem)} faits",     "/mem  /remember"),
         ("vecteurs",    f"{len(vecs)} entrées",  "/search"),
         ("config file", str(CONFIG_FILE),        "(lecture seule)"),
@@ -2359,6 +2823,15 @@ def _doctor_check_events_log() -> tuple[str, str]:
     except Exception as e:
         return ("🟡", f"illisible — {type(e).__name__}")
 
+def _doctor_check_autonomous_writes() -> tuple[str, str]:
+    """Visibilité sur le rythme d'écritures autonomes (write_skill, add_theme_keyword)
+    -- purement informatif, ne bloque jamais rien (voir MAX_AUTO_WRITES_PER_DAY)."""
+    nb = _autonomous_writes_today()
+    if nb >= MAX_AUTO_WRITES_PER_DAY:
+        return ("🟡", f"{nb} écriture(s) autonome(s) aujourd'hui — seuil de "
+                       f"{MAX_AUTO_WRITES_PER_DAY} atteint ou dépassé, /tool audit_autonomy pour le détail")
+    return ("✅", f"{nb} écriture(s) autonome(s) aujourd'hui (seuil : {MAX_AUTO_WRITES_PER_DAY})")
+
 def _doctor_check_telegram_notify() -> tuple:
     if not TELEGRAM_CFG_FILE.exists():
         return ("🟡", f"{TELEGRAM_CFG_FILE} absent — /tool notify et les tâches cron ne pourront pas notifier")
@@ -2391,6 +2864,7 @@ def get_doctor_checks(skills_index: list) -> list:
         ("Skills",                    _doctor_check_skills(skills_index)),
         ("Threads actifs",            _doctor_check_threads()),
         ("Journal d'événements",      _doctor_check_events_log()),
+        ("Écritures autonomes",       _doctor_check_autonomous_writes()),
         ("Notify (Telegram)",         _doctor_check_telegram_notify()),
     ]
 
@@ -2406,11 +2880,11 @@ def run_doctor(skills_index: list):
 
     _sync_terminal_size()   # relit la taille réelle (COLUMNS peut être obsolète après un resize)
     w = shutil.get_terminal_size().columns
-    w_detail = max(w - 24 - 3 - 10, 20)   # fixes : Vérification 24 + icône 3 + marges/bordures
+    w_detail = max(w - 26 - 3 - 10, 18)   # fixes : Vérification 24 + icône 3 + marges/bordures
 
     t = Table(box=rbox.ROUNDED, border_style="cyan",
               header_style="bold yellow", show_lines=False)
-    t.add_column("Vérification", style="white", width=24)
+    t.add_column("Vérification", style="white", width=26)
     t.add_column("", width=3, justify="center")
     t.add_column("Détail", style="dim white", width=w_detail, overflow="fold")
 
@@ -2459,17 +2933,20 @@ def handle_command(cmd: str, skills_index: list) -> list:
     elif command == "/doctor":
         run_doctor(skills_index)
     elif command == "/skills":
+        skills_index = load_skills_index()
         nb = list_skills(skills_index)
         console.print(f"\n  [white]{nb} skill(s) au total[/]\n")
+        return skills_index
     elif command == "/load":
         if not rest:
             console.print("  [yellow]Usage : /load <nom>  ou  /load <n°>[/]")
             return skills_index
         arg = rest
         if arg.isdigit():
+            sorted_index = sorted(skills_index, key=lambda s: s["name"].lower())
             idx = int(arg) - 1
-            if 0 <= idx < len(skills_index):
-                arg = skills_index[idx]["name"]
+            if 0 <= idx < len(sorted_index):
+                arg = sorted_index[idx]["name"]
             else:
                 console.print(f"  [red]❌ Numéro {arg} invalide.[/]")
                 return skills_index
@@ -2608,7 +3085,11 @@ def handle_command(cmd: str, skills_index: list) -> list:
                 kw_sample += "…"
             t.add_row(key, meta["label"], kw_sample)
         console.print(t)
-        console.print(f"  [dim]Pour ajouter un thème : éditez {THEMES_FILE} (redémarrage requis)[/]\n")
+        console.print(
+            f"  [dim]Pour ajouter un mot-clé/thème à chaud (sans redémarrage) : "
+            f"/tool add_theme_keyword <thème> :: <mot-clé>\n"
+            f"  Édition manuelle possible aussi : {THEMES_FILE}[/]\n"
+        )
     elif command in ("/quit", "/exit", "/q"):
         console.print("\n  [cyan]Au revoir ! 👍[/]\n")
         try:
@@ -2724,6 +3205,12 @@ def main():
         if not user_input:
             continue
 
+        # Un autre processus (bot Telegram) a pu changer le modèle/température
+        # entre-temps -- resynchronise avant de traiter ce tour.
+        _model_avant = GROQ_MODEL
+        if maybe_reload_config() and GROQ_MODEL != _model_avant:
+            console.print(f"  [cyan]📡 Modèle synchronisé depuis une autre session : {GROQ_MODEL}[/]")
+
         if user_input.startswith("/"):
             skills_index = handle_command(user_input, skills_index) or skills_index
             continue
@@ -2745,10 +3232,13 @@ def main():
             console.print(f"  [white]Fichier : {SKILLS_DIR}/{safe_preview}.md[/]")
             confirm_p = input(make_prompt_plain("Sauvegarder ce skill ? [O/n]")).strip().lower()
             if confirm_p in ("", "o", "oui", "y", "yes"):
-                fp = save_skill(pending["name"], pending["description"],
-                                pending.get("triggers", []), pending["content"])
-                console.print(f"  [green]✅ Skill sauvegardé : {fp}[/]\n")
-                skills_index = load_skills_index()
+                fp, msg = guarded_save_skill(pending["name"], pending["description"],
+                                             pending.get("triggers", []), pending["content"])
+                if fp is None:
+                    console.print(f"  [yellow]⏭️  Skill non sauvegardé : {msg}[/]\n")
+                else:
+                    console.print(f"  [green]✅ Skill sauvegardé : {fp}[/]\n")
+                    skills_index = load_skills_index()
             else:
                 console.print("  [white]⏭️  Skill ignoré.[/]\n")
 
@@ -2800,21 +3290,31 @@ def main():
             console.print(f"  [white]Fichier : {SKILLS_DIR}/{safe_preview}.md[/]")
             confirm = input(make_prompt_plain("Sauvegarder ? [O/n]")).strip().lower()
             if confirm in ("", "o", "oui", "y", "yes"):
-                f = save_skill(skill_data["name"], skill_data["description"],
-                               skill_data.get("triggers", []), skill_data["content"])
-                console.print(f"  [green]✅ Skill sauvegardé : {f}[/]")
-                if f.exists():
-                    console.print(f"  [green]   ✔ Fichier confirmé ({f.stat().st_size} octets)[/]\n")
-                skills_index = load_skills_index()
+                f, msg = guarded_save_skill(skill_data["name"], skill_data["description"],
+                                            skill_data.get("triggers", []), skill_data["content"])
+                if f is None:
+                    console.print(f"  [yellow]⏭️  Skill non sauvegardé : {msg}[/]\n")
+                else:
+                    console.print(f"  [green]✅ Skill sauvegardé : {f}[/]")
+                    if f.exists():
+                        console.print(f"  [green]   ✔ Fichier confirmé ({f.stat().st_size} octets)[/]\n")
+                    skills_index = load_skills_index()
             else:
                 console.print("  [white]⏭️  Skill non sauvegardé.[/]\n")
             response = clean_response
         else:
             display_response(response)
 
-        history.append({"role": "user",      "content": user_input})
-        history.append({"role": "assistant", "content": response})
-        save_history(history)
+        HISTORY_MSG_CAP = 2000   # caractères — au-delà, un collage massif gonflerait...
+                                 # chaque requête suivante tant qu'il reste dans la fenêtre d'historique
+        def _cap_for_history(text: str) -> str:
+            if len(text) <= HISTORY_MSG_CAP:
+                return text
+            return (text[:HISTORY_MSG_CAP] +
+                    f"\n[...tronqué pour l'historique ({len(text)} caractères au total) — "
+                    f"le contenu complet reste dans long_mem/vectors si besoin de le retrouver...]")
+
+        history = append_exchange_to_history(_cap_for_history(user_input), _cap_for_history(response))
 
         global EXCHANGE_IDX
         vectorize_exchange(user_input, response, EXCHANGE_IDX)
@@ -2836,8 +3336,8 @@ def main():
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "--headless-task":
         # Mode headless (déclenché par cron, sans terminal ni humain présent) :
-        # on journalise en cas de crash imprévu, mais on ne bloque jamais sur
-        # un input() puisque personne ne serait là pour y répondre.
+        # on journalise en cas de crash imprévu, mais on ne bloque jamais sur un input()
+        # puisque personne ne serait là pour y répondre.
         try:
             run_headless_task(" ".join(sys.argv[2:]))
         except Exception:
