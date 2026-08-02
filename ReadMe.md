@@ -11,7 +11,7 @@ Le projet est composé de deux fichiers Python :
 
 ## Architecture générale
 
-┌─────────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────┐
                         agent_groq_ng.py                                           
                                                                                  
      ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
@@ -31,13 +31,13 @@ Le projet est composé de deux fichiers Python :
      │qwen3.6-27b   │  │diagnostic   │  │tâches planifiées   │      
      │              │  │système      │  │sans terminal       │      
      └──────────────┘  └─────────────┘  └────────────────────┘      
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ appelé par
-              ┌──────────────────┴───────────────────┐
-              │      telegram_bot_groq_ng.py         │
-              │ (interface Telegram + confirmations, │
-              │  y compris pour la boucle agentique) │
-              └──────────────────────────────────────┘
+└───────────────────────────────┬─────────────────────────────┘
+                                │ appelé par
+             ┌──────────────────┴───────────────────┐
+             │      telegram_bot_groq_ng.py         │
+             │ (interface Telegram + confirmations, │
+             │  y compris pour la boucle agentique) │
+             └──────────────────────────────────────┘
 
 ## Fonctionnalités de `agent_groq_ng.py`
 
