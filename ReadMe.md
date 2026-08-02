@@ -3,26 +3,28 @@
 Agent IA conversationnel avancé, tournant en local sur **Raspberry Pi 5**, basé par l'API **Groq** (LLM cloud ultra-rapide via LPU).
 Le projet est composé de deux fichiers Python :
 
-- **`agent_groq.py`** — le cœur du système : moteur IA complet avec mémoire, outils, skills, auto-réflexion, analyse d'images, interface terminal
-- **`telegram_bot_groq.py`** — interface Telegram : passerelle qui expose l'agent via un bot Telegram, avec boutons inline de confirmation
+- **`agent_groq_ng.py`** — le cœur du système, **Génération NG (New Generation)** : moteur IA complet avec mémoire, outils, skills, auto-réflexion, analyse d'images, interface terminal — et surtout une **boucle agentique autonome** (function-calling natif) : le LLM peut désormais appeler ses outils lui-même, sans que l'utilisateur ait à taper `/tool ...`
+- **`telegram_bot_groq_ng.py`** — interface Telegram : passerelle qui expose l'agent via un bot Telegram, avec boutons inline de confirmation (outils manuels **et** actions décidées par l'agent lui-même)
+
+> ℹ️ **Génération NG vs Génération 1** — dans la génération précédente, le modèle ne pouvait qu'*écrire* en texte "tape `/tool write ...`" ; c'était à l'utilisateur d'exécuter la commande. En Génération NG, le modèle reçoit les outils via l'API function-calling (compatible OpenAI/Groq) et peut les invoquer directement, en enchaînant plusieurs étapes si nécessaire — les actions sensibles restent soumises à confirmation humaine (voir plus bas).
 
 
 ## Architecture générale
 
 ┌─────────────────────────────────────────────────────────────────┐
-                           agent_groq.py                                           
+                        agent_groq_ng.py                                           
                                                                                  
      ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
      │Context       │  │Skill Router │  │Tool Executor       │     
      │Builder       │  │(embeddings) │  │date, calc, shell,  │      
      │court+long    │  │mot-clé +    │  │read, search, write,│      
      │+profil       │  │vectoriel    │  │net, notify, cron…  │      
-     └──────────────┘  └─────────────┘  └────────────────────┘      
-     ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
-     │Memory Engine │  │Self-        │  │Formatter           │      
-     │court terme   │  │Reflection   │  │Rich, markdown,     │      
-     │long terme    │  │(/reflect)   │  │code, tableaux      │      
-     │vectoriel     │  │             │  │                    │      
+     └──────────────┘  └─────────────┘  └──────────┬─────────┘      
+     ┌──────────────┐  ┌─────────────┐  ┌──────────┴─────────┐      
+     │Memory Engine │  │Self-        │  │Agentic Loop (NG)   │      
+     │court terme   │  │Reflection   │  │function-calling,   │      
+     │long terme    │  │(/reflect)   │  │boucle ReAct,       │      
+     │vectoriel     │  │             │  │cap 6 étapes/tour   │      
      └──────────────┘  └─────────────┘  └────────────────────┘      
      ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
      │Vision (image)│  │Doctor       │  │Cron / headless     │      
@@ -32,11 +34,12 @@ Le projet est composé de deux fichiers Python :
 └────────────────────────────────┬────────────────────────────────┘
                                  │ appelé par
               ┌──────────────────┴───────────────────┐
-              │        telegram_bot_groq.py          │
-              │ (interface Telegram + confirmations) │
+              │      telegram_bot_groq_ng.py         │
+              │ (interface Telegram + confirmations, │
+              │  y compris pour la boucle agentique) │
               └──────────────────────────────────────┘
 
-## Fonctionnalités de `agent_groq.py`
+## Fonctionnalités de `agent_groq_ng.py`
 
 ### 🧠 Memory Engine (4 niveaux)
 - **Mémoire courte** (`history.json`) : historique des derniers échanges de la session
@@ -66,6 +69,16 @@ Le CLI et le bot Telegram sont deux processus indépendants qui partagent leurs 
 - **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Llama 3.3 70B, Compound), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
 - **Erreurs 413 différenciées des 429** — `call_groq()` distingue désormais requête-trop-volumineuse (413, structurel, message recommandant `/model 2` ou `/model 5`) de la limite de débit (429/TPM, transitoire).
 
+### 🤖 Boucle agentique (Génération NG)
+Le cœur de la différence avec la génération précédente : le LLM reçoit les outils via l'API **function-calling** native (compatible OpenAI/Groq) et peut les appeler **lui-même**, au lieu d'écrire une commande que l'utilisateur devrait taper.
+
+- **`run_agentic_turn()`** — boucle type ReAct : le modèle propose un appel d'outil → le code l'exécute → le résultat est réinjecté dans la conversation → le modèle décide d'enchaîner un autre outil ou de conclure. Jusqu'à **6 allers-retours** par tour (`MAX_AGENT_STEPS`), garde-fou anti-emballement au-delà duquel une réponse est forcée et l'événement journalisé.
+- **Aucune régression de sécurité** — `execute_tool()`, `tool_call_needs_confirmation()` et `preview_tool_action()` sont les mêmes qu'en exécution manuelle. Les 4 outils sensibles (`write`, `cron` ajout/suppression, `notify`, `forget`) déclenchent toujours une confirmation humaine avant toute exécution réelle, que l'appel vienne d'une commande tapée ou d'une décision autonome du modèle.
+- **`cron`** est exposé au modèle en 3 sous-outils (`cron_list`/`cron_add`/`cron_remove`) — les LLM gèrent mieux des paramètres nommés qu'une sous-commande encodée en texte libre ; `execute_tool()` reste inchangé côté exécution.
+- **Modèles `compound`/`compound-mini`** — la boucle agentique custom est court-circuitée (ces modèles ont déjà leurs propres outils intégrés côté serveur Groq ; on ne mélange pas les deux mécanismes).
+- **Confirmation côté Telegram** — `run_agentic_turn()` est bloquant et attend une réponse synchrone de son callback de confirmation, alors que Telegram répond via un clic de bouton, potentiellement bien plus tard. Le bot fait le pont avec `_make_agentic_confirm()` : le thread d'exécution attend sur un `threading.Event` pendant que les boutons ✅/❌ sont envoyés sur la boucle asyncio (`run_coroutine_threadsafe`) ; le clic débloque l'attente. **Timeout de 120 s** : sans réponse, l'action est annulée par prudence plutôt que de bloquer le thread indéfiniment.
+- Le mode manuel (`/tool <nom> [args]`) reste disponible en parallèle, inchangé, sur les deux interfaces.
+
 ### 🛠️ Tool Executor
 Outils intégrés, certains nécessitant une **confirmation explicite** (terminal : O/n, Telegram : boutons inline ✅/❌) :
 | Outil              | Description                              | Confirmation|
@@ -75,7 +88,9 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 |                    | timeout 2s, garde-fous anti-DoS sur      |             |
 |                    | les exposants)                           | Non         |
 | `shell`            | Exécution shell en liste blanche (df,    |             |
-|                    | free, uptime, ls, ps, du, vcgencmd…)     | Non         |
+|                    | free, uptime, uname, ls, pwd, date, cat, |             |
+|                    | echo, hostname, whoami, top, ps, du,     |             |
+|                    | lscpu, vcgencmd, python3)                | Non         |
 | `read`             | Lecture d'un fichier (bloque les chemins |             |
 |                    | sensibles : identifiants/secrets)        | Non         |
 | `search`           | Recherche sémantique dans la mémoire     |             |
@@ -94,7 +109,10 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 |                    | vers un hôte                             | Non         |
 | `notify`           | Notification Telegram                    | **Oui**     |
 | `cron`             | Planification/suppression d'une tâche    |             |
-|                    | headless (`list` reste libre)            | **Oui**     |
+|                    | headless (`list` reste libre) — exposé   |             |
+|                    | au modèle en 3 sous-outils (`cron_list`/ |             |
+|                    | `cron_add`/`cron_remove`) dans la        |             |
+|                    | boucle agentique                         | **Oui**     |
 |                    |                                          |(add/remove) |
 | `reindex`          | Reconstruction de l'index vectoriel      |             |
 |                    | depuis la mémoire longue                 | Non         |
@@ -106,7 +124,7 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 |                    |                                          |       seule)|
 
 > ℹ️ `compact` n'est pas exposé dans l'exécuteur d'outils : la consolidation de la mémoire longue par thèmes se fait uniquement via la commande directe `/compact` (voir tableau « Mémoire et recherche » plus bas).
-**Sécurité outils** : `shell` et `read` bloquent explicitement les fichiers sensibles (`.groq_config`, `.telegram_config`, etc.), `calc` tourne dans un process isolé tuable (protection DoS), `write`/`write_skill` sont bornés au dossier autorisé sans traversée de chemin. `cron` ne planifie **jamais** de commande arbitraire : il ne fait que reprogrammer une ré-exécution de `agent_groq.py --headless-task`, un mode sans aucun outil (texte seul), dont le résultat est écrit dans le workspace puis notifié via Telegram.
+**Sécurité outils** : `shell` et `read` bloquent explicitement les fichiers sensibles (`.groq_config`, `.telegram_config`, etc.), `calc` tourne dans un process isolé tuable (protection DoS), `write`/`write_skill` sont bornés au dossier autorisé sans traversée de chemin. `cron` ne planifie **jamais** de commande arbitraire : il ne fait que reprogrammer une ré-exécution de `agent_groq_ng.py --headless-task`, un mode sans aucun outil (texte seul), dont le résultat est écrit dans le workspace puis notifié via Telegram.
 
 ### 🖼️ Analyse d'images (Vision)
 - `/image` en terminal ou envoi direct d'une photo/document-image sur Telegram
@@ -142,8 +160,8 @@ Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/val
 - Plafond de taille sur les skills injectés en contexte (`MAX_SKILL_CONTEXT_CHARS`, 3200 car.) — un skill trop volumineux dépasse le budget TPM des modèles à faible quota (6000 tokens/min) et provoquait un échec 413 systématique ; désormais tronqué à l'injection avec notice, quelle que soit l'interface
 
 
-## Fonctionnalités de `telegram_bot_groq.py`
-Interface Telegram qui **importe directement** les fonctions de `agent_groq.py` (pas de duplication de logique) et **partage la même mémoire** (historique, mémoire longue, vecteurs) que les sessions terminal, protégée par les mêmes verrous inter-processus.
+## Fonctionnalités de `telegram_bot_groq_ng.py`
+Interface Telegram qui **importe directement** les fonctions de `agent_groq_ng.py` (pas de duplication de logique) et **partage la même mémoire** (historique, mémoire longue, vecteurs) que les sessions terminal, protégée par les mêmes verrous inter-processus.
 
 ### Commandes
 | Commande            | Description                                           |
@@ -166,7 +184,7 @@ Interface Telegram qui **importe directement** les fonctions de `agent_groq.py` 
 | `/tools`            | Liste les outils disponibles                          |
 
 ### Confirmation par boutons inline
-Les outils sensibles (`write`, `notify`, `cron`, `forget`) déclenchent un message avec deux boutons **✅ Confirmer** / **❌ Annuler** avant toute exécution réelle — équivalent du `O/n` du terminal.
+Les outils sensibles (`write`, `notify`, `cron`, `forget`) déclenchent un message avec deux boutons **✅ Confirmer** / **❌ Annuler** avant toute exécution réelle — équivalent du `O/n` du terminal. Ce mécanisme couvre à la fois les commandes `/tool` tapées manuellement **et** les actions que l'agent décide lui-même en dialogue libre (boucle agentique, voir plus haut) ; timeout de 120 s dans ce second cas.
 
 ### 🔗 Cohérence avec le terminal
 - **Numérotation des skills** — `/skills` et `/load <n°>` trient désormais par le champ `name` du frontmatter, exactement comme en CLI (`load_skills_index()` renvoie l'ordre du système de fichiers, qui peut différer du champ `name` ; sans ce tri commun, un même numéro pouvait désigner deux skills différents selon l'interface).
@@ -190,8 +208,8 @@ Tout message texte hors commande est traité comme une conversation normale avec
 
 ## Fichiers du projet
 Agent_Groq/
-├── agent_groq.py            # Cœur de l'agent IA
-├── telegram_bot_groq.py     # Interface Telegram
+├── agent_groq_ng.py         # Cœur de l'agent IA (Génération NG, boucle agentique)
+├── telegram_bot_groq_ng.py  # Interface Telegram (avec pont de confirmation agentique)
 └── ReadMe.md                # Ce fichier
 
 # Générés automatiquement dans ~/Projects/Groq_agent/.myagent/ (non versionnés)
@@ -210,7 +228,7 @@ Agent_Groq/
 - Python 3.10+
 - Raspberry Pi 5 (testé sur 16 Go RAM, SSD NVMe 256 Go, OS Bookworm) — ou toute machine Linux
 - Un compte [Groq](https://console.groq.com/) avec une clé API (gratuit)
-- *(Optionnel)* Un bot Telegram créé via [@BotFather](https://t.me/BotFather) — requis pour `telegram_bot_groq.py` et pour `/tool notify`
+- *(Optionnel)* Un bot Telegram créé via [@BotFather](https://t.me/BotFather) — requis pour `telegram_bot_groq_ng.py` et pour `/tool notify`
 
 
 ## Installation
@@ -239,22 +257,22 @@ echo "chat_id = VOTRE_CHAT_ID" >> ~/.telegram_config
 
 ## Lancement
 
-### Mode terminal (~/Projects/Groq_agent/agent_groq.py)
-python3 agent_groq.py
+### Mode terminal (~/Projects/Groq_agent/agent_groq_ng.py)
+python3 agent_groq_ng.py
 
 ### Mode Telegram (bot en parallèle)
 
 # Terminal 1
-python3 ~/Projects/Groq_agent/agent_groq.py
+python3 ~/Projects/Groq_agent/agent_groq_ng.py
 
 # Terminal 2
-python3 ~/Projects/Telegram/telegram_bot_groq.py
+python3 ~/Projects/Telegram/telegram_bot_groq_ng.py
 
 Les deux processus peuvent tourner **simultanément** — les fichiers JSON partagés sont protégés par des verrous inter-processus.
 
 ### Mode headless (tâche cron)
-python3 ~/Projects/Groq_agent/agent_groq.py --headless-task "description de la tâche"
-Déclenché automatiquement par `/tool cron add`. Aucun outil disponible dans ce mode (texte seul) ; le résultat est écrit dans `~/Projects/Groq_agent/.myagent/workspace/` puis notifié via Telegram.
+python3 ~/Projects/Groq_agent/agent_groq_ng.py --headless-task "description de la tâche"
+Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_add` (décidé par l'agent lui-même, avec confirmation). Aucun outil disponible dans ce mode (texte seul) ; le résultat est écrit dans `~/Projects/Groq_agent/.myagent/workspace/` puis notifié via Telegram.
 
 
 ## Commandes disponibles (terminal)
@@ -297,25 +315,26 @@ Déclenché automatiquement par `/tool cron add`. Aucun outil disponible dans ce
 | `/delete <n ou n°>` | Supprime un skill             |
 
 ### Outils, skills & vision
-| Commande                | Description                                      |
-|---                      |---                                               |
-| `/tool date`            | Affiche la date et l'heure                       |
-| `/tool calc <expr>`     | Calcule une expression mathématique              |
-| `/tool shell <cmd>`     | Exécute une commande shell en liste blanche      |
-| `/tool read <chemin>`   | Lit un fichier (chemins sensibles bloqués)       |
-| `/tool write <fichier>` | Écrit dans le workspace (avec confirmation)      |
-| `/tool write_skill <nom>| Crée/màj un skill (autonome, garde-fous …)       |
-|:: <frontmatter+contenu>`|                                                  |
-| `/tool add_theme_keyword| Ajoute un mot-clé de thème (autonome)            | 
-| <thème> :: <mot-clé>`   |                                                  |
-| `/tool audit_autonomy   | Liste les n dernières écritures autonomes        |
-|   [n]`                  |                                      (défaut 10) |
-| `/tool net <hôte>`      | Diagnostic réseau ping + TCP 443                 |
-| `/tool notify <msg>`    | Envoie une notification Telegram (avec           |
-|                         | confirmation)                                    |
-| `/tool cron <expr>`     | Planifie une tâche headless (avec confirmation)  |
-| `/tools`                | Liste les outils disponibles                     |
-| `/image`                | Analyse une image (vision, `qwen/qwen3.6-27b`)   |
+| Commande                                           | Description                                      |
+|---                                                 |---                                               |
+| `/tool date`                                       | Affiche la date et l'heure                       |
+| `/tool calc <expr>`                                | Calcule une expression mathématique              |
+| `/tool shell <cmd>`                                | Exécute une commande shell en liste blanche      |
+|                                                    | (df, free, uptime, uname, ls, pwd, date, cat,    |
+|                                                    | echo, hostname, whoami, top, ps, du, lscpu,      |
+|                                                    | vcgencmd, python3)                               |
+| `/tool read <chemin>`                              | Lit un fichier (chemins sensibles bloqués)       |
+| `/tool write <fichier>`                            | Écrit dans le workspace (avec confirmation)      |
+| `/tool write_skill <nom> :: <frontmatter+contenu>` | Crée/màj un skill (autonome, garde-fous …)       |
+| `/tool add_theme_keyword <thème> :: <mot-clé>`     | Ajoute un mot-clé de thème (autonome)            |
+| `/tool audit_autonomy [n]`                         | Liste les n dernières écritures autonomes        |
+|                                                    |                                      (défaut 10) |
+| `/tool net <hôte>`                                 | Diagnostic réseau ping + TCP 443                 |
+| `/tool notify <msg>`                               | Envoie une notification Telegram (avec           |
+|                                                    | confirmation)                                    |
+| `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)  |
+| `/tools`                                           | Liste les outils disponibles                     |
+| `/image`                                           | Analyse une image (vision, `qwen/qwen3.6-27b`)   |
 
 
 ## Limites Groq (version gratuite)
@@ -345,4 +364,4 @@ __pycache__/
 
 ## Auteur
 **Jean-François Brunet** — [JFBConseils](https://github.com/JeanFrancoisBrunet)
-Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Juillet 2026*
+Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Août 2026*
