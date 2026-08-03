@@ -12,7 +12,7 @@ Le projet est composé de deux fichiers Python :
 ## Architecture générale
 
 ┌─────────────────────────────────────────────────────────────┐
-                     agent_groq_ng.py                                           
+			agent_groq_ng.py                                           
                                                                                  
    ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
    │Context       │  │Skill Router │  │Tool Executor       │     
