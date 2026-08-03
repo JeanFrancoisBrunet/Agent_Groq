@@ -12,25 +12,25 @@ Le projet est composé de deux fichiers Python :
 ## Architecture générale
 
 ┌─────────────────────────────────────────────────────────────┐
-                        agent_groq_ng.py                                           
+                     agent_groq_ng.py                                           
                                                                                  
-     ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
-     │Context       │  │Skill Router │  │Tool Executor       │     
-     │Builder       │  │(embeddings) │  │date, calc, shell,  │      
-     │court+long    │  │mot-clé +    │  │read, search, write,│      
-     │+profil       │  │vectoriel    │  │net, notify, cron…  │      
-     └──────────────┘  └─────────────┘  └──────────┬─────────┘      
-     ┌──────────────┐  ┌─────────────┐  ┌──────────┴─────────┐      
-     │Memory Engine │  │Self-        │  │Agentic Loop (NG)   │      
-     │court terme   │  │Reflection   │  │function-calling,   │      
-     │long terme    │  │(/reflect)   │  │boucle ReAct,       │      
-     │vectoriel     │  │             │  │cap 6 étapes/tour   │      
-     └──────────────┘  └─────────────┘  └────────────────────┘      
-     ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
-     │Vision (image)│  │Doctor       │  │Cron / headless     │      
-     │qwen3.6-27b   │  │diagnostic   │  │tâches planifiées   │      
-     │              │  │système      │  │sans terminal       │      
-     └──────────────┘  └─────────────┘  └────────────────────┘      
+   ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
+   │Context       │  │Skill Router │  │Tool Executor       │     
+   │Builder       │  │(embeddings) │  │date, calc, shell,  │      
+   │court+long    │  │mot-clé +    │  │read, search, write,│      
+   │+profil       │  │vectoriel    │  │net, notify, cron…  │      
+   └──────────────┘  └─────────────┘  └──────────┬─────────┘      
+   ┌──────────────┐  ┌─────────────┐  ┌──────────┴─────────┐      
+   │Memory Engine │  │Self-        │  │Agentic Loop (NG)   │      
+   │court terme   │  │Reflection   │  │function-calling,   │      
+   │long terme    │  │(/reflect)   │  │boucle ReAct,       │      
+   │vectoriel     │  │             │  │cap 6 étapes/tour   │      
+   └──────────────┘  └─────────────┘  └────────────────────┘      
+   ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐      
+   │Vision (image)│  │Doctor       │  │Cron / headless     │      
+   │qwen3.6-27b   │  │diagnostic   │  │tâches planifiées   │      
+   │              │  │système      │  │sans terminal       │      
+   └──────────────┘  └─────────────┘  └────────────────────┘      
 └───────────────────────────────┬─────────────────────────────┘
                                 │ appelé par
              ┌──────────────────┴───────────────────┐
