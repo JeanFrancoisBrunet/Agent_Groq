@@ -8,7 +8,8 @@
 #    Context Builder      — mémoire courte + longue + profil utilisateur
 #    Skill Router         — détection sémantique par embeddings locaux
 #    Tool Executor        — outils : date/heure, calcul, shell (lecture seule),
-#                           fichiers, réseau, notification, tâches planifiées
+#                           fichiers, réseau, notification, tâches planifiées,
+#                           lancement de scripts autonomes (liste blanche)
 #    Memory Engine        — court terme, long terme, vectoriel, clavier
 #    Self-Reflection      — l'agent juge sa réponse (/reflect On/Off)
 #                           par defaut  /reflect est "On" - modèles 1 à 5
@@ -32,6 +33,13 @@
 #    Contrepartie : validation structurelle stricte intégrée à chacun 
 #    (voir TOOLS_REQUIRING_CONFIRMATION dans le TOOL EXECUTOR).
 #
+#    /tool run <nom> lance un script externe listé dans LAUNCHABLE_SCRIPTS 
+#    (liste blanche fermée : emails_scan, suivi_timekeeping_omega, ...). 
+#    Confirmation conditionnelle : dry-run/lecture seule reste autonome,
+#    tout argument marqué à risque (ex. --live) déclenche la confirmation
+#    comme write/cron. Aucune commande arbitraire n'est jamais acceptée
+#    par cet outil.
+#
 #  Dépendances :
 #    pip install openai pyyaml rich sentence-transformers numpy --break-system-packages
 #
@@ -51,7 +59,7 @@
 #
 #  Limites Groq (en version gratuite) :
 #    Tokens Per Minute : erreur 429, réinitialisé après 60s → /clear
-#    RPD : ~14 400/j sur Llama 3.1 8B
+#    RPD : ~14 400/j sur GPT-OSS 20B
 #    Suivi : https://console.groq.com/settings/limits
 #
 #  Auteur : Jean-François BRUNET – JFBConseils – Aout 2026
@@ -92,7 +100,7 @@ import urllib.parse
 import urllib.error
 from datetime import datetime, timedelta
 from pathlib import Path
-from openai import OpenAI
+from openai import OpenAI, BadRequestError
 
 from rich.console  import Console
 from rich.table    import Table
@@ -179,6 +187,43 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 NETWORK_TIMEOUT = 30.0   # secondes — évite qu'un thread reste bloqué sur un appel réseau qui ne répond jamais
 CRON_TAG      = "agent_groq:managed"              # marqueur des lignes crontab gérées par l'agent
 
+# ------------------------------------------------------------------
+# Registre des scripts autonomes que l'agent est autorisé à lancer via
+# /tool run <nom> (Gen 1) ou l'outil function-calling "run" (Gen NG).
+# Liste blanche fermée volontairement : contrairement à "shell" (commandes
+# système en lecture seule), ces scripts ont des effets de bord réels
+# (réseau, fichiers, envoi de mails...). Chaque script doit être ajouté ici
+# explicitement — aucune commande arbitraire n'est jamais acceptée, quel
+# que soit l'argument passé par l'agent ou l'utilisateur.
+# ------------------------------------------------------------------
+LAUNCHABLE_SCRIPTS = {
+    "emails_scan": {
+        "path": Path.home() / "Projects" / "Groq_agent" / "Scan_emails" / "emails_scan.py",
+        "description": "Scan/classement des emails Gmail+Outlook (JFBConseils)",
+        # Chaque argument passé doit matcher l'un de ces motifs, sinon rejeté.
+        "allowed_arg_patterns": [
+            r"^--live$",
+            r"^--since-days$",
+            r"^\d{1,3}$",   # valeur numérique d'un --since-days
+        ],
+        "timeout": 300,           # secondes — script long (IMAP + appels Groq)
+        "confirm_if_contains": {"--live"},   # dry-run = autonome, --live = confirmation
+    },
+    "suivi_timekeeping_omega": {
+        "path": Path("/home/jfbrunet/Projects/Groq_agent/Timekeeping/suivi_timekeeping_omega.py"),
+        "description": "Relevé de prix Omega sur timekeeping.fr (CSV horodaté)",
+        # Script sans argparse : aucun argument accepté. Liste vide = tout
+        # argument passé sera rejeté (voir la boucle de validation ci-dessus).
+        "allowed_arg_patterns": [],
+        "timeout": 300,           # secondes — marge pour le repli HTML (jusqu'à 30s/fiche
+                                  # produit si l'API Store est indisponible ; ~10-15 montres
+                                  # habituellement, donc 300s laisse une marge confortable
+                                  # même en cas de site ralenti)
+        "confirm_if_contains": set(),   # aucune action à risque : lecture web + écriture CSV
+                                          # append-only, déjà exécuté sans supervision via cron
+    },
+}
+
 def log_event(kind: str, message: str):
     """Journalise un événement non bloquant (anomalie, avertissement) dans
     events.log, sans jamais lever d'exception (best-effort)."""
@@ -214,7 +259,7 @@ def _autonomous_writes_today() -> int:
 AGENT_VERSION = "Génération Autonome"   # identifie ce fichier vs agent_groq.py (Génération 1)
 MAX_AGENT_STEPS = 6   # garde-fou anti-emballement : nb max d'allers-retours outil→modèle par tour
 
-GROQ_MODEL    = "llama-3.3-70b-versatile"
+GROQ_MODEL    = "openai/gpt-oss-120b"
 MAX_TOKENS    = 2048
 MAX_HISTORY   = 10
 USER_LABEL    = "Utilisateur"
@@ -228,7 +273,7 @@ MAX_AUTO_WRITES_PER_DAY = 10
 
 # Plafond de taille du contenu d'un skill injecté dans le prompt système.
 # Sans ce plafond, un skill volumineux (notes de conception, backlog...) peut à lui seul dépasser le budget TPM 
-# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Llama 3.3 70B, Compound), 
+# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Compound), 
 # et provoquer un échec 413 systématique -- pas une simple limite de débit ponctuelle, mais un blocage reproductible
 # à chaque appel de ce skill tant que le modèle ou le skill ne changent pas. ~3200 caractères ≈ 800 tokens,
 # une marge raisonnable même cumulée avec l'historique et la mémoire longue.
@@ -258,10 +303,8 @@ GROQ_MODELS = {
     "1": ("openai/gpt-oss-120b",        "GPT-OSS 120B",   "Meilleur raisonnement",  "128k", "6k"),
     "2": ("openai/gpt-oss-20b",         "GPT-OSS  20B",   "Rapide & Performant",    "128k", "30k"),
     "3": ("qwen/qwen3.6-27b",           "Qwen 3.6  27B",  "Raisonnement avancé",    "128k", "6k"),
-    "4": ("llama-3.3-70b-versatile",    "Llama 3.3  70B", "Bonne qualite (legacy)", "128k", "6k"),
-    "5": ("llama-3.1-8b-instant",       "Llama 3.1   8B", "Rapide (legacy)",        "128k", "30k"),
-    "6": ("groq/compound",              "Compound",       "Web & Code live",        "128k", "6k"),
-    "7": ("groq/compound-mini",         "Compound Mini",  "Web rapide & Code",      "128k", "30k"),
+    "4": ("groq/compound",              "Compound",       "Web & Code live",        "128k", "6k"),
+    "5": ("groq/compound-mini",         "Compound Mini",  "Web rapide & Code",      "128k", "30k"),
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -299,7 +342,7 @@ CONFIG_DEFAULT = """\
 #  Clé API dans ~/Projects/Groq_agent/.groq_config
 # =============================================================================
 
-model: llama-3.3-70b-versatile
+model: openai/gpt-oss-120b
 user_label: Utilisateur
 max_tokens: 2048
 max_history: 10
@@ -717,7 +760,7 @@ Agent : {agent_response}
 
 Réponds UNIQUEMENT avec le JSON, sans texte autour."""
         resp = get_client().chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=256, temperature=0.2)
         raw = resp.choices[0].message.content.strip()
@@ -852,7 +895,6 @@ def consolidate_long_memory() -> dict:
     faits_txt = "\n".join(f"[{i}] {e['fact']}" for i, e in enumerate(mem))
     themes_desc = _themes_description_for_prompt()
     themes_keys = list(MEMORY_THEMES.keys())
-    themes_json_template = "\n".join(f'  "{k}": null' for k in themes_keys)
 
     prompt = f"""Tu es chargé de consolider une mémoire IA.
 Voici {n_avant} faits bruts issus de conversations :
@@ -867,27 +909,47 @@ Règles :
 2. Pour chaque thème qui reçoit au moins un fait, rédige UNE phrase dense
    (max 150 mots) qui fusionne tous ces faits sans perdre d'information.
 3. Si aucun fait ne correspond à un thème, laisse la valeur null.
-4. IMPORTANT : la valeur associée à chaque clé doit être UNE SIMPLE CHAÎNE
-   DE CARACTÈRES (la phrase résumée) ou null — jamais un objet, jamais une
-   liste, jamais de sous-champs comme "libellé" ou "mots-clés".
-5. Réponds UNIQUEMENT avec ce JSON, sans texte autour, sans balises :
-{{
-{themes_json_template}
-}}
-Exemple de format attendu pour une valeur : "theme_key": "Résumé dense en une phrase." """
+Réponds en JSON."""
+
+    # Structured Outputs en mode strict (constrained decoding) : contrairement
+    # à l'ancien response_format={"type": "json_object"} (JSON Object Mode,
+    # best-effort — peut renvoyer une erreur 400 json_validate_failed), le
+    # mode strict garantit une sortie qui respecte exactement ce schéma —
+    # jamais d'objet/liste imbriqué à la place d'une phrase, jamais d'erreur
+    # de validation. gpt-oss-20b/120b sont les seuls modèles Groq qui le
+    # supportent actuellement (llama-3.3-70b-versatile est déprécié chez Groq).
+    consolidation_schema = {
+        "type": "object",
+        "properties": {k: {"type": ["string", "null"]} for k in themes_keys},
+        "required": themes_keys,
+        "additionalProperties": False,
+    }
 
     def _shape_errors(d: dict) -> list[str]:
-        """Retourne les clés dont la valeur n'est ni une string ni null/None
-        (cas observé : le LLM renvoie un objet {'libellé':..., 'mots-clés':...}
-        au lieu de la phrase résumée attendue)."""
+        """Filet de sécurité résiduel : ne devrait plus jamais rien renvoyer
+        en mode strict (la conformité au schéma est garantie côté Groq),
+        conservé au cas où la librairie/l'API évoluerait."""
         return [k for k, v in d.items() if v is not None and not isinstance(v, str)]
 
     def _call_llm(extra_instruction: str = "") -> dict:
         resp = get_client().chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[{"role": "user", "content": prompt + extra_instruction}],
-            max_tokens=800, temperature=0.1,
-            response_format={"type": "json_object"},  # force une sortie JSON syntaxiquement valide
+            max_tokens=4096, temperature=0.1,
+            reasoning_effort="low",  # gpt-oss-20b est un modèle de raisonnement : à
+            # effort "medium" (valeur par défaut), le raisonnement interne consommait
+            # une partie du budget de tokens avant même de produire le JSON — avec
+            # l'ancien max_tokens=800, ça pouvait laisser 0 token pour la réponse
+            # elle-même (generation vide -> json_validate_failed, failed_generation
+            # vide, même en mode strict).
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "consolidation_memoire",
+                    "strict": True,
+                    "schema": consolidation_schema,
+                },
+            },
         )
         raw = resp.choices[0].message.content.strip()
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
@@ -924,6 +986,38 @@ Exemple de format attendu pour une valeur : "theme_key": "Résumé dense en une 
                         "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
         except Exception as e2:
             return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
+    except BadRequestError as e:
+        # Erreur CÔTÉ GROQ (code json_validate_failed), distincte d'un
+        # json.JSONDecodeError local : ici le décodage contraint échoue avant
+        # même de renvoyer une réponse exploitable (bug connu de Groq sur le
+        # mode JSON strict pour gpt-oss-20b, surtout sur les prompts volumineux
+        # comme celui-ci — tous les faits + les 17 thèmes). Sans ce bloc,
+        # l'erreur tombait directement dans le handler générique ci-dessous
+        # sans aucune nouvelle tentative.
+        body = getattr(e, "body", None)
+        code = body.get("code") if isinstance(body, dict) else None
+        # failed_generation est vide côté Groq (peu exploitable) : on logue
+        # tout ce qu'on peut récupérer côté client pour diagnostiquer une
+        # récidive malgré le passage en strict mode.
+        raw_resp_text = None
+        try:
+            raw_resp_text = e.response.text
+        except Exception:
+            pass
+        log_event("memory_consolidation_json_validate_debug",
+                   f"status={getattr(e, 'status_code', '?')} body={body!r} response_text={raw_resp_text!r}")
+        if code == "json_validate_failed" or "json_validate_failed" in str(e):
+            try:
+                log_event("memory_consolidation_json_validate_retry",
+                           f"Échec décodage contraint côté Groq ({e}), nouvelle tentative")
+                consolidated = _call_llm("\n\nRappel : réponds avec un JSON valide et complet, sans troncature.")
+                if not isinstance(consolidated, dict):
+                    return {"avant": n_avant, "apres": n_avant,
+                            "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
+            except Exception as e2:
+                return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
+        else:
+            return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
     except Exception as e:
         return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
 
@@ -1243,7 +1337,7 @@ def route_skill(user_message: str, skills_index: list) -> tuple[str | None, str]
 # seuls les fichiers de secrets/identifiants sont bloqués,
 # quel que soit l'outil utilisé pour y accéder (read, shell cat/echo).
 _SENSITIVE_PATH_PATTERNS = (
-    ".groq_config", ".telegram_config", ".ssh", ".gnupg", ".aws",
+    ".groq_config", ".telegram_config", ".ssh", ".secrets.env", ".gnupg", ".aws",
     ".netrc", ".pgpass", "id_rsa", "id_ed25519", "id_ecdsa",
     "authorized_keys", "shadow", "gshadow", ".env", "credentials",
 )
@@ -1389,6 +1483,7 @@ TOOLS = {
     "net":               "Teste connexion réseau (ping)     ex: /tool net api.groq.com",
     "notify":            "Envoie message Telegram           ex: /tool notify Tâche terminée",
     "cron":              "Gère les tâches planifiées        ex: /tool cron list | add | remove",
+    "run":               "Lance un script autonome autorisé ex: /tool run emails_scan --live",
 }
 
 # Outils à effet de bord persistant ou sortant : une confirmation explicite est
@@ -1420,6 +1515,14 @@ def tool_call_needs_confirmation(tool: str, args: str) -> bool:
     tool = tool.lower().strip()
     if tool == "cron" and args.strip().split(" ", 1)[:1] == ["list"]:
         return False
+    if tool == "run":
+        # Confirmation seulement si l'appel contient un mot-clé à risque défini
+        # par le script (ex. "--live" pour emails_scan = actions réelles).
+        # Le dry-run reste autonome, comme "cron list".
+        nom = args.strip().split()[0] if args.strip() else ""
+        entry = LAUNCHABLE_SCRIPTS.get(nom, {})
+        risky = entry.get("confirm_if_contains", set())
+        return any(kw in args for kw in risky)
     return tool in TOOLS_REQUIRING_CONFIRMATION
 
 def preview_tool_action(tool: str, args: str) -> str:
@@ -1464,6 +1567,14 @@ def preview_tool_action(tool: str, args: str) -> str:
         elif sous_cmd == "remove":
             return f"🗑 Supprimer la tâche planifiée id={reste.strip()}"
         return f"❓ Sous-commande cron '{sous_cmd}' non reconnue"
+    elif tool == "run":
+        parts = args.strip().split()
+        nom = parts[0] if parts else "?"
+        entry = LAUNCHABLE_SCRIPTS.get(nom, {})
+        desc = entry.get("description", "script inconnu")
+        return (f"🚀 Lancer `{nom}` ({desc})\n"
+                f"   Arguments : {' '.join(parts[1:]) or '(aucun)'}\n"
+                f"   ⚠ Contient une action à effet réel (--live) — vérifie avant de valider.")
     return f"⚙️ Exécuter /tool {tool} {args}"
 
 def execute_tool(tool: str, args: str) -> str:
@@ -1515,9 +1626,13 @@ def execute_tool(tool: str, args: str) -> str:
     elif tool == "shell":
         if not args:
             return "❌ Usage : /tool shell <commande>"
+        # "python3" volontairement absent : shell = diagnostic en lecture seule
+        # uniquement. Tout lancement de programme passe exclusivement par
+        # /tool run (liste blanche LAUNCHABLE_SCRIPTS, validation stricte des
+        # arguments, exécution en arrière-plan avec timeout adapté).
         allowed_cmds = {"df", "free", "uptime", "uname", "ls", "pwd",
                         "date", "cat", "echo", "hostname", "whoami",
-                        "top", "ps", "du", "lscpu", "vcgencmd", "python3"}
+                        "top", "ps", "du", "lscpu", "vcgencmd"}
         cmd_name = args.split()[0]
         if cmd_name not in allowed_cmds:
             return (f"❌ Commande '{cmd_name}' non autorisée.\n"
@@ -1539,7 +1654,40 @@ def execute_tool(tool: str, args: str) -> str:
             return "❌ Timeout (5s)"
         except Exception as e:
             return f"❌ Erreur : {e}"
-    elif tool == "read":
+    elif tool == "run":
+        if not args:
+            noms = ", ".join(sorted(LAUNCHABLE_SCRIPTS))
+            return f"❌ Usage : /tool run <nom> [args]\n   Scripts disponibles : {noms}"
+        parts = args.split()
+        nom, script_args = parts[0], parts[1:]
+        entry = LAUNCHABLE_SCRIPTS.get(nom)
+        if entry is None:
+            noms = ", ".join(sorted(LAUNCHABLE_SCRIPTS))
+            return f"❌ Script '{nom}' non autorisé.\n   Autorisés : {noms}"
+        script_path = entry["path"]
+        if not script_path.exists():
+            return f"❌ Script introuvable sur disque : {script_path}"
+        import re as _re
+        patterns = entry.get("allowed_arg_patterns", [])
+        for a in script_args:
+            if not any(_re.match(p, a) for p in patterns):
+                return f"❌ Argument non autorisé : '{a}' (script '{nom}')"
+        try:
+            result = subprocess.run(
+                [sys.executable, str(script_path)] + script_args,
+                shell=False, capture_output=True, text=True,
+                timeout=entry.get("timeout", 60),
+            )
+            out = (result.stdout or "").strip() or (result.stderr or "").strip()
+            log_event("script_launched", f"run {nom} {' '.join(script_args)} -> code={result.returncode}")
+            statut = "✅" if result.returncode == 0 else f"❌ (code {result.returncode})"
+            return f"{statut} `{nom}` terminé.\n```\n{out[:2500]}\n```"
+        except subprocess.TimeoutExpired:
+            log_event("script_launched", f"run {nom} {' '.join(script_args)} -> TIMEOUT")
+            return f"❌ Timeout ({entry.get('timeout', 60)}s) pour '{nom}'"
+        except Exception as e:
+            log_event("script_launched", f"run {nom} {' '.join(script_args)} -> erreur={e}")
+            return f"❌ Erreur de lancement : {e}"
         if not args:
             return "❌ Usage : /tool read <chemin>"
         try:
@@ -1808,8 +1956,11 @@ def execute_tool(tool: str, args: str) -> str:
 # et tool_call_needs_confirmation() ne changent PAS : on les réutilise tels
 # quels, on construit juste (tool_réel, args_string) à partir de l'appel JSON
 # structuré du modèle. "cron" est éclaté en 3 outils (cron_list/add/remove)
-# côté schéma car les LLM gèrent bien mieux des paramètres nommés qu'une
-# sous-commande encodée dans une chaîne libre.
+# "cron" est éclaté en 3 outils (cron_list/add/remove) côté schéma car les
+# LLM gèrent bien mieux des paramètres nommés qu'une sous-commande encodée
+# dans une chaîne libre. "run" (lancement de script autonome, voir
+# LAUNCHABLE_SCRIPTS) suit le même principe : paramètres nommés (script,
+# live, since_days) plutôt qu'une chaîne d'arguments brute.
 
 TOOL_SCHEMA_SPEC = {
     "date":              {"desc": "Affiche la date et l'heure actuelles.", "params": []},
@@ -1855,6 +2006,19 @@ TOOL_SCHEMA_SPEC = {
                                       ("description", "string", "Description de la tâche planifiée", True)]},
     "cron_remove":       {"desc": "Supprime une tâche planifiée par son id (voir cron_list).",
                            "params": [("id", "string", "Id de la tâche à supprimer", True)]},
+    "run":               {"desc": "Lance un script autonome pré-approuvé (liste blanche fermée, "
+                                   "voir LAUNCHABLE_SCRIPTS). Actuellement disponibles : emails_scan "
+                                   "(scan/classement des emails Gmail+Outlook JFBConseils) et "
+                                   "suivi_timekeeping_omega (relevé de prix Omega sur timekeeping.fr, "
+                                   "aucun argument accepté pour ce dernier).",
+                           "params": [("script", "string", "Nom du script à lancer, ex: emails_scan "
+                                                            "ou suivi_timekeeping_omega", True),
+                                      ("live", "boolean", "true = actions réelles (déplacement, suppression, "
+                                                           "envoi) ; false/absent = simulation dry-run sans "
+                                                           "aucun risque. Ignoré par suivi_timekeeping_omega.", False),
+                                      ("since_days", "string", "Optionnel : limite la fenêtre de récupération "
+                                                                "à N jours (ex: 30, pour un premier scan). "
+                                                                "Ignoré par suivi_timekeeping_omega.", False)]},
 }
 
 def _tool_openai_schemas() -> list[dict]:
@@ -1882,8 +2046,7 @@ _SINGLE_ARG_KEY = {
 
 def _tool_args_from_call(tool_name: str, arguments: dict) -> tuple[str, str]:
     """Reconstruit (tool_réel, args_string) tels qu'attendus par execute_tool(),
-    preview_tool_action() et tool_call_needs_confirmation() -- inchangés depuis
-    la Génération 1."""
+    preview_tool_action() et tool_call_needs_confirmation() -- inchangés depuis la Génération 1."""
     if tool_name == "cron_list":
         return "cron", "list"
     if tool_name == "cron_add":
@@ -1899,6 +2062,15 @@ def _tool_args_from_call(tool_name: str, arguments: dict) -> tuple[str, str]:
         return "write_skill", f"{arguments.get('name', '')} :: {arguments.get('content', '')}"
     if tool_name == "add_theme_keyword":
         return "add_theme_keyword", f"{arguments.get('theme', '')} :: {arguments.get('keyword', '')}"
+    if tool_name == "run":
+        script = str(arguments.get("script", "")).strip()
+        parts = [script] if script else []
+        if arguments.get("live"):
+            parts.append("--live")
+        since = arguments.get("since_days")
+        if since:
+            parts += ["--since-days", str(since).strip()]
+        return "run", " ".join(parts)
     key = _SINGLE_ARG_KEY.get(tool_name)
     if key:
         return tool_name, str(arguments.get(key, "")).strip()
@@ -2096,7 +2268,7 @@ def send_telegram_notification(message: str) -> tuple[bool, str]:
 
 # ── Garde-fou quota journalier (RPD) ────────────────────────────────────────
 # Le tier gratuit Groq limite à un certain nombre de requêtes/jour selon le modèle
-# (ex: ~14 400/j sur Llama 3.1 8B).
+# (ex: ~14 400/j sur GPT-OSS 20B).
 RPD_FILE      = BASE_DIR / "rpd_counter.json"
 RPD_SOFT_LIMIT = 13000   # avertissement avant la limite gratuite usuelle (~14400)
 
@@ -2408,7 +2580,7 @@ Sinon, donne UNIQUEMENT la version améliorée, sans introduction ni commentaire
 #  Fonctionnement :
 #    Soumis au pool borné _BACKGROUND_EXECUTOR après chaque échange (comme
 #    extract_and_store_facts) plutôt qu'un thread daemon brut par appel.
-#    Utilise llama-3.1-8b-instant pour analyser si l'échange contient une
+#    Utilise openai/gpt-oss-20b pour analyser si l'échange contient une
 #    procédure ou configuration réutilisable qui mérite un skill.
 #    Si oui : retourne un dict {name, description, triggers, content} et
 #             stocke le résultat dans _pending_skill pour que la boucle
@@ -2454,7 +2626,7 @@ Contenu (extrait) : {content[:600]}
   évidence ou une simple définition"""
     try:
         resp = get_client().chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=100, temperature=0.1,
         )
@@ -2526,7 +2698,7 @@ Si OUI : {{"create": true, "name": "nom_snake_case", "description": "description
 
     try:
         resp = get_client().chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=512, temperature=0.1,
         )
@@ -2739,7 +2911,7 @@ def show_models():
                   desc, ctx, tpm, style="bold green" if active else "")
     console.print()
     console.print(t)
-    console.print("  [white]Usage :[/]  [cyan]/model 2[/]   ou   [cyan]/model llama-3.1-8b-instant[/]\n")
+    console.print("  [white]Usage :[/]  [cyan]/model 2[/]   ou   [cyan]/model openai/gpt-oss-20b[/]\n")
 
 def select_model(choice: str):
     global GROQ_MODEL, client

@@ -68,7 +68,7 @@ Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs
 ### 🔗 Fiabilité multi-processus (CLI ↔ Telegram)
 Le CLI et le bot Telegram sont deux processus indépendants qui partagent leurs fichiers de données (mémoire, skills, `config.yaml`) mais pas leur état mémoire :
 - **Synchronisation config** (`maybe_reload_config`) — changer de modèle ou de température sur l'une des deux interfaces ne se répercutait pas sur l'autre tant qu'elle tournait déjà. Un simple `stat()` de `config.yaml` avant chaque échange (CLI comme Telegram) détecte un changement externe et recharge automatiquement, avec une notice affichée si le modèle a changé.
-- **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Llama 3.3 70B, Compound), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
+- **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Compound), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
 - **Erreurs 413 différenciées des 429** — `call_groq()` distingue désormais requête-trop-volumineuse (413, structurel, message recommandant `/model 2` ou `/model 5`) de la limite de débit (429/TPM, transitoire).
 
 ### 🤖 Boucle agentique (Génération NG)
@@ -112,18 +112,18 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 
 ### 🔄 Self-Reflection (`/reflect`)
 L'agent évalue et améliore sa propre réponse avant de l'afficher.
-Activé par défaut sur les modèles 1 à 5, désactivé sur les agents web (6 et 7).
+Activé par défaut sur les modèles 1 à 3, désactivé automatiquement sur les modèles compound (4 et 5).
 
 ### 🤖 Modèles Groq disponibles (`/model`)
+> ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq et supprimés de la liste ; il ne reste plus que 5 modèles (Compound et Compound Mini reprennent les numéros 4 et 5).
+
 | # | Modèle             | Points forts           | Contexte | TPM   |
 |---|---                 |---                     |---       |---    |
 | 1 | GPT-OSS 120B       | Meilleur raisonnement  | 128k     | 6k    |
 | 2 | GPT-OSS 20B        | Rapide & performant    | 128k     | 30k   |
 | 3 | Qwen 3.6 27B       | Raisonnement avancé    | 128k     | 6k    |
-| 4 | Llama 3.3 70B      | Bonne qualité (legacy) | 128k     | 6k    |
-| 5 | Llama 3.1 8B       | Rapide (legacy)        | 128k     | 30k   |
-| 6 | Groq Compound      | Web & Code live        | 128k     | 6k    |
-| 7 | Groq Compound Mini | Web rapide & Code      | 128k     | 30k   |
+| 4 | Groq Compound      | Web & Code live        | 128k     | 6k    |
+| 5 | Groq Compound Mini | Web rapide & Code      | 128k     | 30k   |
 
 ### 🩺 Doctor — diagnostic système (`/doctor`)
 Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/validité des fichiers de données, contention des verrous inter-processus, quota RPD, disponibilité des embeddings, espace disque, historique clavier, intégrité des skills, threads actifs, journal d'événements, rythme d'écritures autonomes (skills/thèmes), et configuration Telegram (`notify`).
@@ -149,7 +149,7 @@ Interface Telegram qui **importe directement** les fonctions de `agent_groq_ng.p
 | `/status`           | Modèle actif, température, tokens max, nombre de skills        |
 | `/doctor`           | Diagnostic système                                             |
 | `/model`            | Affiche les modèles disponibles (sans argument)                |
-| `/model <n>`        | Change de modèle Groq (n = 1 à 7), boutons inline de sélection |
+| `/model <n>`        | Change de modèle Groq (n = 1 à 5), boutons inline de sélection |
 | `/clear`            | Vide l'historique de conversation (mémoire courte)             |
 | `/mem`              | Affiche la mémoire longue                                      |
 | `/compact`          | Consolide la mémoire longue par thèmes                         |
@@ -269,7 +269,7 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | Commande            | Description                                                      |
 |---                  |---                                                               |
 | `/help`             | Affiche toutes les commandes disponibles                         |
-| `/model [1-7]`      | Change le modèle Groq (sans argument : affiche la liste)         |
+| `/model [1-5]`      | Change le modèle Groq (sans argument : affiche la liste)         |
 | `/user <prénom>`    | Change le prénom utilisé par l'agent                             |
 | `/tokens <n>`       | Change le nombre max de tokens de réponse                        |
 | `/temp <val>`       | Change la température (0.0–1.0)                                  |
@@ -321,7 +321,7 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | Limite              | Détail                                   |
 |---                  |---                                       |
 | Tokens/minute       | Erreur 429 → attendre ~60s puis `/clear` |
-| RPD                 | ~14 400 requêtes/jour sur Llama 3.1 8B   |
+| RPD                 | ~14 400 requêtes/jour selon le modèle    |
 | Suivi               | https://console.groq.com/settings/limits |
 
 

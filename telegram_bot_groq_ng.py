@@ -8,7 +8,7 @@
 #    /status            – Modèle actif, température, tokens max, nb skills
 #    /doctor            – Diagnotic le système
 #    /model             – Affiche les modèles disponibles
-#    /model <n>         – Change de modèle Groq (n = 1..7)
+#    /model <n>         – Change de modèle Groq (n = 1..5)
 #    /clear             – Vide l'historique conversation (reset mémoire courte)
 #    /mem               – Affiche la mémoire longue (faits mémorisés)
 #    /skills            – Liste les skills disponibles
@@ -26,6 +26,12 @@
 #                         de skill déclenché par une réponse de l'agent.
 #    📷 photo/image     – Analyse l'image envoyée (qwen/qwen3.6-27b, vision)
 #                         La légende de la photo sert de question optionnelle
+#    /scanmails [--live] [--since-days N]
+#                       – Lance emails_scan.py (scan/classement Gmail+Outlook).
+#                         Sans --live : dry-run (aucune action réelle).
+#                         Avec --live : actions réelles (déplacement, suppression,
+#                         brouillons, envois auto cadrés). Non bloquant pour le bot,
+#                         timeout de sécurité à 5 min.
 #    <texte libre>      – Dialogue avec l'agent Groq
 #
 #  Architecture :
@@ -276,7 +282,7 @@ async def cmd_aide(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"*Commandes :*\n"
         f"/status — État de l'agent\n"
         f"/model — Liste des modèles\n"
-        f"/model <n> — Chgt modèle (1–7)\n"
+        f"/model <n> — Chgt modèle (1–5)\n"
         f"/clear — Vide mémoire courte\n"
         f"/mem — Affiche mémoire longue\n"
         f"/compact — Optimise mémoire lg\n"
@@ -287,6 +293,8 @@ async def cmd_aide(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"/tools — Liste des outils\n"
         f"/tool <nom> — ex: date, calc, shell…\n"
         f"/doctor — Diagnostic système\n"
+        f"/scanmails — Scan emails (dry-run)\n"
+        f"/scanmails --live — Scan emails (réel)\n"
         f"/aide — Ce menu\n\n"
         f"📷 Envoie une photo\n      (légende = question).\n"
         f"💬 Envoie un texte pour dialoguer\n      avec l'agent."
@@ -354,7 +362,7 @@ async def cmd_model(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def _changer_model(update_or_query, n: str):
     """Change le modèle et répond à l'update ou au query."""
     if n not in ag.GROQ_MODELS:
-        msg = f"❌ Numéro invalide : `{n}` — valeurs 1 à 7."
+        msg = f"❌ Numéro invalide : `{n}` — valeurs 1 à 5."
         if hasattr(update_or_query, "message"):
             await _reply(update_or_query, msg)
         else:
@@ -1043,6 +1051,45 @@ async def handler_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         _en_cours.discard(msg_id)
 
 # ------------------------------------------------------------
+# /scanmails  (déclenchement à la demande de emails_scan.py)
+# ------------------------------------------------------------
+EMAILS_SCAN_SCRIPT = os.path.expanduser(
+    "~/Projects/Groq_agent/Scan_emails/emails_scan.py"
+)
+
+async def cmd_scanmails(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _est_autorise(update):
+        await update.message.reply_text("⛔ Accès refusé.")
+        return
+
+    args = ctx.args if ctx.args else []
+    dry_run = "--live" not in args
+    mode_txt = "DRY-RUN (aucune action réelle)" if dry_run else "LIVE"
+    await _reply(update, f"📧 Scan emails lancé ({mode_txt})… patiente, ça peut prendre 1-2 min.")
+
+    cmd = [sys.executable, EMAILS_SCAN_SCRIPT] + args
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await _reply(update, "⏱ Scan interrompu après 5 min (timeout).")
+            return
+
+        sortie = stdout.decode(errors="replace").strip()
+        if proc.returncode != 0:
+            await _reply(update, f"❌ emails_scan.py a échoué (code {proc.returncode}) :\n{_trunc(sortie, 3500)}")
+        else:
+            await _reply(update, _trunc(sortie, 3800) or "✅ Scan terminé, aucune sortie.")
+    except Exception as exc:
+        await _reply(update, f"❌ Erreur au lancement du scan : {_safe_exc_text(exc)}")
+
+# ------------------------------------------------------------
 # Attente synchronisation NTP
 # ------------------------------------------------------------
 async def _attendre_ntp(timeout: int = 60) -> bool:
@@ -1156,6 +1203,7 @@ def main():
     app.add_handler(CommandHandler("tool",    cmd_tool))
     app.add_handler(CommandHandler("tools",   cmd_tools))
     app.add_handler(CommandHandler("doctor",  cmd_doctor))
+    app.add_handler(CommandHandler("scanmails", cmd_scanmails))
     app.add_handler(CallbackQueryHandler(callback_dispatch))
     app.add_handler(MessageHandler(filters.PHOTO, handler_photo))
     app.add_handler(MessageHandler(filters.Document.IMAGE, handler_document_image))
