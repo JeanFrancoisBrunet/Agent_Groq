@@ -273,7 +273,7 @@ MAX_AUTO_WRITES_PER_DAY = 10
 
 # Plafond de taille du contenu d'un skill injecté dans le prompt système.
 # Sans ce plafond, un skill volumineux (notes de conception, backlog...) peut à lui seul dépasser le budget TPM 
-# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Compound), 
+# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B), 
 # et provoquer un échec 413 systématique -- pas une simple limite de débit ponctuelle, mais un blocage reproductible
 # à chaque appel de ce skill tant que le modèle ou le skill ne changent pas. ~3200 caractères ≈ 800 tokens,
 # une marge raisonnable même cumulée avec l'historique et la mémoire longue.
@@ -303,9 +303,12 @@ GROQ_MODELS = {
     "1": ("openai/gpt-oss-120b",        "GPT-OSS 120B",   "Meilleur raisonnement",  "128k", "6k"),
     "2": ("openai/gpt-oss-20b",         "GPT-OSS  20B",   "Rapide & Performant",    "128k", "30k"),
     "3": ("qwen/qwen3.6-27b",           "Qwen 3.6  27B",  "Raisonnement avancé",    "128k", "6k"),
-    "4": ("groq/compound",              "Compound",       "Web & Code live",        "128k", "6k"),
-    "5": ("groq/compound-mini",         "Compound Mini",  "Web rapide & Code",      "128k", "30k"),
 }
+# Note (août 2026) : "groq/compound" et "groq/compound-mini" ont été retirés de
+# cette liste — Groq a annoncé leur dépréciation, avec décommissionnement au
+# 21/09/2026 (plus aucune requête servie après cette date). GPT-OSS 120B et
+# GPT-OSS 20B intègrent nativement recherche web et exécution de code côté
+# Groq et couvrent le même besoin ; voir https://console.groq.com/docs/deprecations.
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CLÉ API GROQ
@@ -2082,15 +2085,10 @@ def run_agentic_turn(system_prompt: str, history: list, user_message: str,
     de répondre, jusqu'à MAX_AGENT_STEPS. confirm_callback(tool, preview) -> bool
     est appelé pour chaque outil sensible (TOOLS_REQUIRING_CONFIRMATION) ; s'il
     renvoie False, l'action est annulée et le modèle en est informé pour
-    s'adapter, sans jamais s'exécuter. Retourne (réponse_finale, journal_actions).
-    Les modèles 'compound' gardent l'ancien chemin (outils déjà intégrés
-    côté serveur Groq, on ne mélange pas les deux mécanismes)."""
+    s'adapter, sans jamais s'exécuter. Retourne (réponse_finale, journal_actions)."""
     messages = [{"role": "system", "content": system_prompt}] + list(history) + \
                [{"role": "user", "content": user_message}]
     action_log: list[str] = []
-
-    if GROQ_MODEL in {"groq/compound", "groq/compound-mini"}:
-        return call_groq(system_prompt, history, user_message), action_log
 
     tools_schema = _tool_openai_schemas()
 
@@ -2444,8 +2442,8 @@ def _extract_rate_limit_detail(err: str) -> str:
     return " — " + " ; ".join(parts) if parts else " — réessaie dans un instant"
 
 def _strip_think(text: str) -> str:
-    """Retire le raisonnement interne que certains modèles (compound-mini,
-    modèles vision) placent parfois dans le contenu de la réponse sous forme
+    """Retire le raisonnement interne que certains modèles (dont les modèles
+    vision) placent parfois dans le contenu de la réponse sous forme
     de balises <think>...</think>. Ce raisonnement n'est jamais destiné à
     l'utilisateur final et ne doit jamais atteindre Telegram.
 
@@ -2466,8 +2464,7 @@ def call_groq(system_prompt: str, history: list, user_message: str) -> str:
     messages += history
     messages.append({"role": "user", "content": user_message})
 
-    compound_models = {"groq/compound", "groq/compound-mini"}
-    effective_max_tokens = min(MAX_TOKENS, 800) if GROQ_MODEL in compound_models else MAX_TOKENS
+    effective_max_tokens = MAX_TOKENS
 
     MAX_RETRIES   = 3
     BACKOFF_BASE  = 1.5   # secondes, doublé à chaque tentative (1.5s, 3s, 6s)
@@ -2486,31 +2483,6 @@ def call_groq(system_prompt: str, history: list, user_message: str) -> str:
 
             msg = resp.choices[0].message
 
-            # Modèles compound : les outils intégrés (recherche web, code) sont
-            # déjà exécutés côté serveur Groq avant que la réponse n'arrive ici.
-            # tc.function.arguments ne contient PAS un résultat exploitable, juste
-            # les paramètres de l'appel : il ne faut donc jamais le réinjecter comme
-            # contenu d'un message "tool" 
-            # (ça ne fait qu'induire le modèle en erreur lors d'un éventuel second tour).
-            if GROQ_MODEL in compound_models:
-                if msg.content:
-                    return _strip_think(msg.content.strip()) + rpd_warning
-                # Contenu vide malgré un appel d'outil interne : 
-                # on redemande une synthèse en langage naturel, sans rejouer de faux résultats d'outil.
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    tool_names = ", ".join(sorted({tc.function.name for tc in msg.tool_calls}))
-                    messages.append({"role": "assistant",
-                                      "content": f"(outil interne utilisé : {tool_names}, mais pas de synthèse textuelle)"})
-                    messages.append({"role": "user",
-                                      "content": "Donne-moi la réponse en texte clair, sans rappeler que tu as utilisé un outil."})
-                    resp2 = get_client().chat.completions.create(
-                        model=GROQ_MODEL, messages=messages,
-                        max_tokens=effective_max_tokens, temperature=TEMPERATURE)
-                    content2 = resp2.choices[0].message.content
-                    if content2:
-                        return _strip_think(content2.strip()) + rpd_warning
-                return "⚠ Réponse vide du modèle compound." + rpd_warning
-
             return _strip_think(msg.content.strip()) + rpd_warning
 
         except Exception as e:
@@ -2524,8 +2496,8 @@ def call_groq(system_prompt: str, history: list, user_message: str) -> str:
                 # ne changent pas ; ne jamais le confondre avec un 429 qui, lui, se
                 # résout en attendant.
                 return ("⚠  Requête trop volumineuse pour ce modèle (413) — le skill actif "
-                        "ou le contexte dépassent son budget tokens. Essaie /model 2 ou "
-                        "/model 5 (30k tokens/min) plutôt que de réessayer sur ce modèle.")
+                        "ou le contexte dépassent son budget tokens. Essaie /model 2 "
+                        "(30k tokens/min) plutôt que de réessayer sur ce modèle.")
             if "429" in err or "TPM" in err:
                 return f"⚠  Limite Groq atteinte{_extract_rate_limit_detail(err)}"
             if "404" in err:
@@ -2927,15 +2899,9 @@ def select_model(choice: str):
         global REFLECT_MODE
         model_id, label, desc, *_ = found
         GROQ_MODEL = model_id; client = None
-        COMPOUND_MODELS = {"groq/compound", "groq/compound-mini"}
-        if model_id in COMPOUND_MODELS:
-            if REFLECT_MODE:
-                REFLECT_MODE = False
-                console.print("  [yellow]⚠  Self-Reflection désactivé automatiquement (modèle compound)[/]")
-        else:
-            if not REFLECT_MODE:
-                REFLECT_MODE = True
-                console.print("  [green]✅ Self-Reflection activé automatiquement[/]")
+        if not REFLECT_MODE:
+            REFLECT_MODE = True
+            console.print("  [green]✅ Self-Reflection activé automatiquement[/]")
         save_config()
         console.print(f"  [green]✅ Modèle :[/] [bold green]{label}[/]  —  {desc}  [white](sauvegardé)[/]")
     else:

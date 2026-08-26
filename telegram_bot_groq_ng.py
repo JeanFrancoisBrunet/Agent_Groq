@@ -362,7 +362,7 @@ async def cmd_model(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def _changer_model(update_or_query, n: str):
     """Change le modèle et répond à l'update ou au query."""
     if n not in ag.GROQ_MODELS:
-        msg = f"❌ Numéro invalide : `{n}` — valeurs 1 à 5."
+        msg = f"❌ Numéro invalide : `{n}` — valeurs 1 à 3."
         if hasattr(update_or_query, "message"):
             await _reply(update_or_query, msg)
         else:
@@ -373,16 +373,10 @@ async def _changer_model(update_or_query, n: str):
     ag.GROQ_MODEL = model_id
     ag.client = None
 
-    COMPOUND_MODELS = {"groq/compound", "groq/compound-mini"}
     reflect_avert = ""
-    if model_id in COMPOUND_MODELS:
-        if ag.REFLECT_MODE:
-            ag.REFLECT_MODE = False
-            reflect_avert = "\n⚠ _Self-Reflection désactivé automatiquement_"
-    else:
-        if not ag.REFLECT_MODE:
-            ag.REFLECT_MODE = True
-            reflect_avert = "\n✅ _Self-Reflection activé automatiquement_"
+    if not ag.REFLECT_MODE:
+        ag.REFLECT_MODE = True
+        reflect_avert = "\n✅ _Self-Reflection activé automatiquement_"
 
     ag.save_config()
 

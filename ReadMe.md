@@ -68,8 +68,8 @@ Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs
 ### 🔗 Fiabilité multi-processus (CLI ↔ Telegram)
 Le CLI et le bot Telegram sont deux processus indépendants qui partagent leurs fichiers de données (mémoire, skills, `config.yaml`) mais pas leur état mémoire :
 - **Synchronisation config** (`maybe_reload_config`) — changer de modèle ou de température sur l'une des deux interfaces ne se répercutait pas sur l'autre tant qu'elle tournait déjà. Un simple `stat()` de `config.yaml` avant chaque échange (CLI comme Telegram) détecte un changement externe et recharge automatiquement, avec une notice affichée si le modèle a changé.
-- **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B, Compound), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
-- **Erreurs 413 différenciées des 429** — `call_groq()` distingue désormais requête-trop-volumineuse (413, structurel, message recommandant `/model 2` ou `/model 5`) de la limite de débit (429/TPM, transitoire).
+- **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
+- **Erreurs 413 différenciées des 429** — `call_groq()` distingue désormais requête-trop-volumineuse (413, structurel, message recommandant `/model 2`) de la limite de débit (429/TPM, transitoire).
 
 ### 🤖 Boucle agentique (Génération NG)
 Le cœur de la différence avec la génération précédente : le LLM reçoit les outils via l'API **function-calling** native (compatible OpenAI/Groq) et peut les appeler **lui-même**, au lieu d'écrire une commande que l'utilisateur devrait taper.
@@ -77,7 +77,6 @@ Le cœur de la différence avec la génération précédente : le LLM reçoit le
 - **`run_agentic_turn()`** — boucle type ReAct : le modèle propose un appel d'outil → le code l'exécute → le résultat est réinjecté dans la conversation → le modèle décide d'enchaîner un autre outil ou de conclure. Jusqu'à **6 allers-retours** par tour (`MAX_AGENT_STEPS`), garde-fou anti-emballement au-delà duquel une réponse est forcée et l'événement journalisé.
 - **Aucune régression de sécurité** — `execute_tool()`, `tool_call_needs_confirmation()` et `preview_tool_action()` sont les mêmes qu'en exécution manuelle. Les 4 outils sensibles (`write`, `cron` ajout/suppression, `notify`, `forget`) déclenchent toujours une confirmation humaine avant toute exécution réelle, que l'appel vienne d'une commande tapée ou d'une décision autonome du modèle.
 - **`cron`** est exposé au modèle en 3 sous-outils (`cron_list`/`cron_add`/`cron_remove`) — les LLM gèrent mieux des paramètres nommés qu'une sous-commande encodée en texte libre ; `execute_tool()` reste inchangé côté exécution.
-- **Modèles `compound`/`compound-mini`** — la boucle agentique custom est court-circuitée (ces modèles ont déjà leurs propres outils intégrés côté serveur Groq ; on ne mélange pas les deux mécanismes).
 - **Confirmation côté Telegram** — `run_agentic_turn()` est bloquant et attend une réponse synchrone de son callback de confirmation, alors que Telegram répond via un clic de bouton, potentiellement bien plus tard. Le bot fait le pont avec `_make_agentic_confirm()` : le thread d'exécution attend sur un `threading.Event` pendant que les boutons ✅/❌ sont envoyés sur la boucle asyncio (`run_coroutine_threadsafe`) ; le clic débloque l'attente. **Timeout de 120 s** : sans réponse, l'action est annulée par prudence plutôt que de bloquer le thread indéfiniment.
 - Le mode manuel (`/tool <nom> [args]`) reste disponible en parallèle, inchangé, sur les deux interfaces.
 
@@ -112,18 +111,16 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 
 ### 🔄 Self-Reflection (`/reflect`)
 L'agent évalue et améliore sa propre réponse avant de l'afficher.
-Activé par défaut sur les modèles 1 à 3, désactivé automatiquement sur les modèles compound (4 et 5).
+Activé par défaut sur les 3 modèles disponibles.
 
 ### 🤖 Modèles Groq disponibles (`/model`)
-> ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq et supprimés de la liste ; il ne reste plus que 5 modèles (Compound et Compound Mini reprennent les numéros 4 et 5).
+> ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq. `groq/compound` et `groq/compound-mini` ont été annoncés dépréciés par Groq (décommissionnement au 21/09/2026) et retirés de la liste. Il ne reste que 3 modèles.
 
 | # | Modèle             | Points forts           | Contexte | TPM   |
 |---|---                 |---                     |---       |---    |
 | 1 | GPT-OSS 120B       | Meilleur raisonnement  | 128k     | 6k    |
 | 2 | GPT-OSS 20B        | Rapide & performant    | 128k     | 30k   |
 | 3 | Qwen 3.6 27B       | Raisonnement avancé    | 128k     | 6k    |
-| 4 | Groq Compound      | Web & Code live        | 128k     | 6k    |
-| 5 | Groq Compound Mini | Web rapide & Code      | 128k     | 30k   |
 
 ### 🩺 Doctor — diagnostic système (`/doctor`)
 Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/validité des fichiers de données, contention des verrous inter-processus, quota RPD, disponibilité des embeddings, espace disque, historique clavier, intégrité des skills, threads actifs, journal d'événements, rythme d'écritures autonomes (skills/thèmes), et configuration Telegram (`notify`).
