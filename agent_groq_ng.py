@@ -98,9 +98,10 @@ import traceback
 import urllib.request
 import urllib.parse
 import urllib.error
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from openai import OpenAI, BadRequestError
+from openai import OpenAI, BadRequestError, RateLimitError
 
 from rich.console  import Console
 from rich.table    import Table
@@ -1021,6 +1022,28 @@ Réponds en JSON."""
                 return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
         else:
             return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
+    except RateLimitError as e:
+        # Quota TPM/minute atteint : Groq indique lui-même le délai avant reset
+        # ("try again in 24.3s") — on l'exploite pour un retry automatique plutôt
+        # que de faire dépendre la réussite du /compact d'un changement manuel de
+        # modèle (qui n'a aucun effet ici : ce modèle est fixe, voir plus haut).
+        err = str(e)
+        delay = _retry_delay_seconds(err)
+        if delay is None:
+            log_event("memory_consolidation_rate_limit_daily", err[:500])
+            return {"avant": n_avant, "apres": n_avant,
+                    "erreur": f"Quota journalier Groq atteint{_extract_rate_limit_detail(err)}"}
+        log_event("memory_consolidation_rate_limit_retry",
+                   f"429 TPM, attente {delay:.1f}s puis nouvelle tentative")
+        time.sleep(delay + 0.5)  # petite marge sur le délai annoncé
+        try:
+            consolidated = _call_llm()
+            if not isinstance(consolidated, dict):
+                return {"avant": n_avant, "apres": n_avant,
+                        "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
+        except Exception as e2:
+            return {"avant": n_avant, "apres": n_avant,
+                    "erreur": f"Échec après retry TPM : {e2}"}
     except Exception as e:
         return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
 
@@ -1691,6 +1714,7 @@ def execute_tool(tool: str, args: str) -> str:
         except Exception as e:
             log_event("script_launched", f"run {nom} {' '.join(script_args)} -> erreur={e}")
             return f"❌ Erreur de lancement : {e}"
+    elif tool == "read":
         if not args:
             return "❌ Usage : /tool read <chemin>"
         try:
@@ -2440,6 +2464,21 @@ def _extract_rate_limit_detail(err: str) -> str:
     if m_retry:
         parts.append(m_retry.group(0))
     return " — " + " ; ".join(parts) if parts else " — réessaie dans un instant"
+
+def _retry_delay_seconds(err: str, default: float = 5.0, cap: float = 60.0) -> float | None:
+    """Extrait le délai numérique (en secondes) suggéré par Groq dans un message
+    d'erreur 429 ("Please try again in 24.3s"). Retourne None si le quota touché
+    est journalier (RPD/TPD) — inutile d'attendre puis réessayer dans ce cas — ou
+    si aucun délai n'est trouvé, `default` est utilisé. Le délai est plafonné à
+    `cap` pour éviter qu'un appel interactif ne reste bloqué trop longtemps."""
+    if re.search(r'on (requests|tokens) per day', err, re.IGNORECASE):
+        return None
+    m = re.search(r'try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)?s?', err, re.IGNORECASE)
+    if not m:
+        return default
+    hours, minutes, seconds = m.groups()
+    total = (int(hours or 0) * 3600) + (int(minutes or 0) * 60) + float(seconds or 0)
+    return min(total, cap) if total > 0 else default
 
 def _strip_think(text: str) -> str:
     """Retire le raisonnement interne que certains modèles (dont les modèles
