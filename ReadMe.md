@@ -29,7 +29,7 @@ Le projet est composé de deux fichiers Python :
 │  └──────────────┘  └─────────────┘  └────────────────────┘  │
 │  ┌──────────────┐  ┌─────────────┐  ┌────────────────────┐  │
 │  │Vision (image)│  │Doctor       │  │Cron / headless     │  │
-│  │qwen3.6-27b   │  │diagnostic   │  │tâches planifiées   │  │
+│  │qwen3.8-27b   │  │diagnostic   │  │tâches planifiées   │  │
 │  │              │  │système      │  │sans terminal       │  │
 │  └──────────────┘  └─────────────┘  └────────────────────┘  │
 └────────────────────────────────┬────────────────────────────┘
@@ -68,7 +68,7 @@ Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs
 ### 🔗 Fiabilité multi-processus (CLI ↔ Telegram)
 Le CLI et le bot Telegram sont deux processus indépendants qui partagent leurs fichiers de données (mémoire, skills, `config.yaml`) mais pas leur état mémoire :
 - **Synchronisation config** (`maybe_reload_config`) — changer de modèle ou de température sur l'une des deux interfaces ne se répercutait pas sur l'autre tant qu'elle tournait déjà. Un simple `stat()` de `config.yaml` avant chaque échange (CLI comme Telegram) détecte un changement externe et recharge automatiquement, avec une notice affichée si le modèle a changé.
-- **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
+- **Plafond de taille à l'injection** (`build_system_prompt`, `MAX_SKILL_CONTEXT_CHARS`) — un skill volumineux peut à lui seul dépasser le budget TPM d'un modèle à faible quota (6000 tokens/min pour GPT-OSS 120B, 8000 pour Qwen 3.8 27B), provoquant un échec 413 reproductible tant que le skill ou le modèle ne changent pas. Tout skill actif de plus de 3200 caractères (~800 tokens) est tronqué à l'injection avec une notice explicite, quelle que soit l'interface — c'est le seul filet qui couvre aussi un skill déposé **manuellement** dans `skills/` (non créé par l'agent, donc non soumis au plafond de création ci-dessus).
 - **Erreurs 413 différenciées des 429** — `call_groq()` distingue désormais requête-trop-volumineuse (413, structurel, message recommandant `/model 2`) de la limite de débit (429/TPM, transitoire).
 
 ### 🤖 Boucle agentique (Génération NG)
@@ -106,7 +106,7 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 
 ### 🖼️ Analyse d'images (Vision)
 - `/image` en terminal ou envoi direct d'une photo/document-image sur Telegram
-- Utilise le modèle vision `qwen/qwen3.6-27b`
+- Utilise le modèle vision `qwen/qwen3.8-27b`
 - La légende de la photo (Telegram) sert de question optionnelle à l'analyse
 
 ### 🔄 Self-Reflection (`/reflect`)
@@ -114,13 +114,13 @@ L'agent évalue et améliore sa propre réponse avant de l'afficher.
 Activé par défaut sur les 3 modèles disponibles.
 
 ### 🤖 Modèles Groq disponibles (`/model`)
-> ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq. `groq/compound` et `groq/compound-mini` ont été annoncés dépréciés par Groq (décommissionnement au 21/09/2026) et retirés de la liste. Il ne reste que 3 modèles.
+> ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq. `groq/compound` et `groq/compound-mini` ont été annoncés dépréciés par Groq (décommissionnement au 21/09/2026) et retirés de la liste. `qwen/qwen3.6-27b` a été annoncé déprécié par Groq le 02/09/2026 (décommissionnement au 14/09/2026, routage automatique vers `qwen/qwen3.8-27b` après cette date) et remplacé ici directement par `qwen/qwen3.8-27b`. Il ne reste que 3 modèles.
 
 | # | Modèle             | Points forts           | Contexte | TPM   |
 |---|---                 |---                     |---       |---    |
 | 1 | GPT-OSS 120B       | Meilleur raisonnement  | 128k     | 6k    |
 | 2 | GPT-OSS 20B        | Rapide & performant    | 128k     | 30k   |
-| 3 | Qwen 3.6 27B       | Raisonnement avancé    | 128k     | 6k    |
+| 3 | Qwen 3.8 27B       | Raisonnement avancé    | 128k     | 8k    |
 
 ### 🩺 Doctor — diagnostic système (`/doctor`)
 Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/validité des fichiers de données, contention des verrous inter-processus, quota RPD, disponibilité des embeddings, espace disque, historique clavier, intégrité des skills, threads actifs, journal d'événements, rythme d'écritures autonomes (skills/thèmes), et configuration Telegram (`notify`).
@@ -167,7 +167,7 @@ Les outils sensibles (`write`, `notify`, `cron`, `forget`) déclenchent un messa
 ### 📷 Analyse d'images
 - Envoi d'une photo ou d'un document-image directement dans le chat
 - La légende (caption) de la photo sert de question optionnelle à l'analyse vision
-- Utilise le même moteur vision (`qwen/qwen3.6-27b`) que la commande `/image` du terminal
+- Utilise le même moteur vision (`qwen/qwen3.8-27b`) que la commande `/image` du terminal
 
 ### 💬 Dialogue libre
 Tout message texte hors commande est traité comme une conversation normale avec l'agent (routage skill, recherche vectorielle, appel Groq, self-reflection identiques au mode terminal).
@@ -311,7 +311,7 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/tool notify <msg>`                               | Envoie une notification Telegram (avec confirmation)  |
 | `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)       |
 | `/tools`                                           | Liste les outils disponibles                          |
-| `/image`                                           | Analyse une image (vision, `qwen/qwen3.6-27b`)        |
+| `/image`                                           | Analyse une image (vision, `qwen/qwen3.8-27b`)        |
 
 
 ## Limites Groq (version gratuite)

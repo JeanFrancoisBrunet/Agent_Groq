@@ -274,7 +274,7 @@ MAX_AUTO_WRITES_PER_DAY = 10
 
 # Plafond de taille du contenu d'un skill injecté dans le prompt système.
 # Sans ce plafond, un skill volumineux (notes de conception, backlog...) peut à lui seul dépasser le budget TPM 
-# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, Qwen 3.6 27B), 
+# d'un modèle Groq à faible quota (6000 tokens/min pour GPT-OSS 120B, 8000 pour Qwen 3.8 27B), 
 # et provoquer un échec 413 systématique -- pas une simple limite de débit ponctuelle, mais un blocage reproductible
 # à chaque appel de ce skill tant que le modèle ou le skill ne changent pas. ~3200 caractères ≈ 800 tokens,
 # une marge raisonnable même cumulée avec l'historique et la mémoire longue.
@@ -303,13 +303,16 @@ _BACKGROUND_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 GROQ_MODELS = {
     "1": ("openai/gpt-oss-120b",        "GPT-OSS 120B",   "Meilleur raisonnement",  "128k", "6k"),
     "2": ("openai/gpt-oss-20b",         "GPT-OSS  20B",   "Rapide & Performant",    "128k", "30k"),
-    "3": ("qwen/qwen3.6-27b",           "Qwen 3.6  27B",  "Raisonnement avancé",    "128k", "6k"),
+    "3": ("qwen/qwen3.8-27b",           "Qwen 3.8  27B",  "Raisonnement avancé",    "128k", "8k"),
 }
 # Note (août 2026) : "groq/compound" et "groq/compound-mini" ont été retirés de
-# cette liste — Groq a annoncé leur dépréciation, avec décommissionnement au
-# 21/09/2026 (plus aucune requête servie après cette date). GPT-OSS 120B et
-# GPT-OSS 20B intègrent nativement recherche web et exécution de code côté
+# cette liste — Groq a annoncé leur dépréciation, avec décommissionnement au 21/09/2026 
+# GPT-OSS 120B et GPT-OSS 20B intègrent nativement recherche web et exécution de code côté
 # Groq et couvrent le même besoin ; voir https://console.groq.com/docs/deprecations.
+# Note (sept. 2026) : "qwen/qwen3.6-27b" déprécié par Groq le 02/09/2026,
+# décommissionnement au 14/09/2026 (routage auto vers qwen/qwen3.8-27b après cette date). 
+# Remplacé ici par "qwen/qwen3.8-27b" (même usage : raisonnement avancé + vision) ; 
+# quota TPM constaté 8k (vs 6k) — voir https://console.groq.com/docs/deprecations.
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CLÉ API GROQ
@@ -2314,14 +2317,14 @@ def _rpd_increment_and_check() -> int:
         return 0
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ANALYSE D'IMAGE  — vision multimodale via qwen/qwen3.6-27b
+#  ANALYSE D'IMAGE  — vision multimodale via qwen/qwen3.8-27b
 #
 #  Formats supportés : JPEG, PNG, WEBP, GIF (non animé), BMP
 #  Limites Groq : 20 MB max par image (URL ou base64), 1 image / requête
-#  Modèle : qwen/qwen3.6-27b (multimodal, traite texte + image nativement)
+#  Modèle : qwen/qwen3.8-27b (multimodal, traite texte + image nativement)
 # ══════════════════════════════════════════════════════════════════════════════
 
-VISION_MODEL          = "qwen/qwen3.6-27b"
+VISION_MODEL          = "qwen/qwen3.8-27b"
 IMAGE_MAX_SIZE_BYTES  = 20 * 1024 * 1024          # 20 MB (limite Groq)
 IMAGE_SUPPORTED_EXTS  = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
@@ -2360,7 +2363,7 @@ def _encode_image_to_base64(image_path: Path) -> tuple[str, str]:
     return b64_data, mime_type
 
 def analyze_image(image_path: str, question: str = "") -> str:
-    """Analyse une image avec le modèle vision qwen/qwen3.6-27b.
+    """Analyse une image avec le modèle vision qwen/qwen3.8-27b.
 
     Args:
         image_path : chemin local vers l'image (jpg, png, webp, gif, bmp).
@@ -2416,7 +2419,7 @@ def analyze_image(image_path: str, question: str = "") -> str:
     })
 
     try:
-        # VISION_MODEL (qwen/qwen3.6-27b) est fixe, indépendant de /model --
+        # VISION_MODEL (qwen/qwen3.8-27b) est fixe, indépendant de /model --
         # et fait partie des modèles à faible quota (6000 tokens/min), d'où
         # un plafond de sécurité. Mais c'est aussi un modèle de raisonnement
         # (comme observé en Test 4 sur le modèle texte équivalent) : un
