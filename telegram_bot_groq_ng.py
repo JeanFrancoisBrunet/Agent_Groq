@@ -24,7 +24,7 @@
 #                         automatiques (dédoublonnage sémantique, score
 #                         qualité, anti-emballement) partagés avec l'auto-save
 #                         de skill déclenché par une réponse de l'agent.
-#    📷 photo/image     – Analyse l'image envoyée (qwen/qwen3.6-27b, vision)
+#    📷 photo/image     – Analyse l'image envoyée (qwen/qwen3.8-27b, vision)
 #                         La légende de la photo sert de question optionnelle
 #    /scanmails [--live] [--since-days N]
 #                       – Lance emails_scan.py (scan/classement Gmail+Outlook).
@@ -794,7 +794,7 @@ async def cmd_doctor(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _reply(update, "\n".join(lignes))
 
 # ------------------------------------------------------------
-# Photos → analyse d'image via qwen/qwen3.6-27b (vision)
+# Photos → analyse d'image via qwen/qwen3.8-27b (vision)
 # ------------------------------------------------------------
 async def handler_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Reçoit une photo Telegram, la télécharge temporairement et l'analyse
