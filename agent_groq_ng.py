@@ -635,6 +635,22 @@ def clear_history():
     _history_cache = []
     console.print("  [yellow]🧹 Mémoire courte effacée.[/]")
 
+def clear_keyboard_history():
+    """Vide l'historique clavier (flèches ↑↓) : buffer readline en mémoire
+    ET fichier .readline_history sur disque, pour éviter qu'il ne soit
+    réécrit tel quel à la prochaine sauvegarde (voir set_history_length)."""
+    try:
+        readline.clear_history()
+    except Exception:
+        pass
+    if _RL_HISTORY is not None:
+        try:
+            _RL_HISTORY.write_text("", encoding="utf-8")
+        except Exception as e:
+            console.print(f"  [red]❌ Impossible de vider {_RL_HISTORY.name} : {e}[/]")
+            return
+    console.print("  [yellow]⌨️  Historique clavier effacé.[/]")
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MEMORY ENGINE — 2. MÉMOIRE LONGUE
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2991,28 +3007,28 @@ def show_help():
     t.add_column("Exemple d'usage", style="white", width=w_ex)
     t.add_column("Description",     style="white", width=26)
     cmds = [
-        ("/skills",       "(connaitre les skills actuels)",     "Liste les skills"),
-        ("/load",         "/load accueil ou /load 2",           "Affiche un skill"),
-        ("/delete",       "/delete accueil ou /delete 2",       "Supprime un skill"),
-        ("/tool",         "/tool date ou /tool calc 2**10",     "Exécute un outil"),
-        ("/tools",        "(identifier les outils dispo.)",     "Liste les outils"),
-        ("/search",       "/search raspberry pi",               "Recherche sémantique"),
-        ("/image",        "(photo.jpg Combien ...?)",           "Analyse une image"),
-        ("/mem",          "(lire la mémoire longue)",           "Mémoire longue"),
-        ("/remember",     "/remember J'utilise Python 3.11",    "Mémorise un fait"),
-        ("/compact",      "(synthétiser les thèmes)",           "Consolide par thèmes"),
-        ("/themes",       "(identifier les thèmes)",            "Liste les thèmes mém."),
-        ("/clear",        "(nettoyer la mémoire courte)",       "Efface mémoire courte"),
-        ("/history",      "(lire les échanges)",                "Affiche les échanges"),
-        ("/history_size", str(MAX_HISTORY),                     "Nb messages mémoire"),
-        ("/model",        f"/model 2  ou  /model {GROQ_MODEL}", "Change le modèle"),
-        ("/reflect",      "On (activé) ou  Off (désactivé)",    "Self-Reflection"),
-        ("/user",         USER_LABEL,                           "Change le prénom"),
-        ("/tokens",       str(MAX_TOKENS),                      "Max tokens réponse"),
-        ("/temp",         str(TEMPERATURE),                     "Température 0.0-1.0"),
-        ("/config",       "(visualiser les paramètres)",        "Affiche la config"),
-        ("/doctor",       "(visualiser les anomalies)",         "Diagnostic système"),
-        ("/quit",         "/quit ou /q ou /exit",               "Quitte l'agent"),
+        ("/skills",       "(connaitre les skills actuels)",             "Liste les skills"),
+        ("/load",         "/load accueil ou /load 2",                   "Affiche un skill"),
+        ("/delete",       "/delete accueil ou /delete 2",               "Supprime un skill"),
+        ("/tool",         "/tool date ou /tool calc 2**10",             "Exécute un outil"),
+        ("/tools",        "(identifier les outils dispo.)",             "Liste les outils"),
+        ("/search",       "/search raspberry pi",                       "Recherche sémantique"),
+        ("/image",        "(photo.jpg Combien ...?)",                   "Analyse une image"),
+        ("/mem",          "(lire la mémoire longue)",                   "Mémoire longue"),
+        ("/remember",     "/remember J'utilise Python 3.11",            "Mémorise un fait"),
+        ("/compact",      "(synthétiser les thèmes)",                   "Consolide par thèmes"),
+        ("/themes",       "(identifier les thèmes)",                    "Liste les thèmes mém."),
+        ("/clear",        "/clear mem ou /clear clavier ou /clear all", "Efface mém. courte/clavier"),
+        ("/history",      "(lire les échanges)",                        "Affiche les échanges"),
+        ("/history_size", str(MAX_HISTORY),                             "Nb messages mémoire"),
+        ("/model",        f"/model 2  ou  /model {GROQ_MODEL}",         "Change le modèle"),
+        ("/reflect",      "On (activé) ou  Off (désactivé)",            "Self-Reflection"),
+        ("/user",         USER_LABEL,                                   "Change le prénom"),
+        ("/tokens",       str(MAX_TOKENS),                              "Max tokens réponse"),
+        ("/temp",         str(TEMPERATURE),                             "Température 0.0-1.0"),
+        ("/config",       "(visualiser les paramètres)",                "Affiche la config"),
+        ("/doctor",       "(visualiser les anomalies)",                 "Diagnostic système"),
+        ("/quit",         "/quit ou /q ou /exit",                       "Quitte l'agent"),
     ]
     for cmd, ex, desc in cmds:
         t.add_row(cmd, ex, desc)
@@ -3033,18 +3049,18 @@ def show_config():
     mem  = load_long_memory()
     vecs = _load_vectors()
     for param, val, cmd in [
-        ("model",       GROQ_MODEL,              "/model"),
-        ("user_label",  USER_LABEL,              "/user"),
-        ("max_tokens",  str(MAX_TOKENS),         "/tokens"),
-        ("max_history", str(MAX_HISTORY),        "/history_size"),
-        ("temperature", str(TEMPERATURE),        "/temp"),
-        ("reflect",     str(REFLECT_MODE),       "/reflect"),
+        ("model",       GROQ_MODEL,                                                  "/model"),
+        ("user_label",  USER_LABEL,                                                  "/user"),
+        ("max_tokens",  str(MAX_TOKENS),                                             "/tokens"),
+        ("max_history", str(MAX_HISTORY),                                            "/history_size"),
+        ("temperature", str(TEMPERATURE),                                            "/temp"),
+        ("reflect",     str(REFLECT_MODE),                                           "/reflect"),
         ("auto_writes/j", f"{_autonomous_writes_today()}/{MAX_AUTO_WRITES_PER_DAY}", "config.yaml"),
-        ("mém. longue", f"{len(mem)} faits",     "/mem  /remember"),
-        ("vecteurs",    f"{len(vecs)} entrées",  "/search"),
-        ("config file", str(CONFIG_FILE),        "(lecture seule)"),
-        ("clé API",     str(GROQ_CFG_FILE),      "(lecture seule)"),
-        ("skills dir",  str(SKILLS_DIR),         "(lecture seule)"),
+        ("mém. longue", f"{len(mem)} faits",                                         "/mem  /remember"),
+        ("vecteurs",    f"{len(vecs)} entrées",                                      "/search"),
+        ("config file", str(CONFIG_FILE),                                            "(lecture seule)"),
+        ("clé API",     str(GROQ_CFG_FILE),                                          "(lecture seule)"),
+        ("skills dir",  str(SKILLS_DIR),                                             "(lecture seule)"),
     ]:
         t.add_row(param, val, cmd)
     console.print()
@@ -3145,7 +3161,7 @@ def _doctor_check_readline_history() -> tuple[str, str]:
     try:
         nb_lignes = sum(1 for _ in open(_RL_HISTORY, "r", encoding="utf-8", errors="ignore"))
         if nb_lignes > 550:
-            return ("🟡", f"{nb_lignes} lignes — au-delà de la limite de 500 attendue, purge à vérifier")
+            return ("🟡", f"{nb_lignes} lignes — au-delà de la limite de 500 attendue, /clear clavier disponible")
         return ("✅", f"{nb_lignes} lignes (plafond : 500)")
     except Exception as e:
         return ("🟡", f"illisible — {type(e).__name__}")
@@ -3394,7 +3410,16 @@ def handle_command(cmd: str, skills_index: list) -> list:
                     label = MEMORY_THEMES.get(theme_key, {}).get("label", theme_key)
                     console.print(f"     [cyan]{label}[/] : {rich_escape(str(apercu))}")
     elif command == "/clear":
-        clear_history()
+        sub = rest.strip().lower()
+        if sub in ("", "mem", "mémoire", "memoire"):
+            clear_history()
+        elif sub in ("clavier", "kb", "keyboard"):
+            clear_keyboard_history()
+        elif sub == "all":
+            clear_history()
+            clear_keyboard_history()
+        else:
+            console.print("  [yellow]Usage : /clear [mem|clavier|all]  (sans argument = mem)[/]")
     elif command == "/history":
         h = load_history()
         if not h:

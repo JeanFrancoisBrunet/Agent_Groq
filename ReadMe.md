@@ -47,9 +47,9 @@ Le projet est composé de deux fichiers Python :
 - **Mémoire courte** (`history.json`) : historique des derniers échanges de la session
 - **Mémoire longue** (`long_mem.json`) : faits importants extraits automatiquement après chaque échange par le LLM, organisés par **thèmes** (`themes.yaml`)
 - **Index vectoriel** (`vectors.json`) : embeddings locaux (sentence-transformers) pour recherche sémantique
-- **Historique clavier** (`.readline_history`) : navigation ↑↓ dans le terminal
+- **Historique clavier** (`.readline_history`) : navigation ↑↓ dans le terminal, plafonné à 500 lignes (troncature automatique à la sauvegarde)
 
-Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs à partir de la mémoire longue), `/tool compact` (consolidation par thèmes, seuil de similarité 0.85), `/tool forget <id>` (suppression ciblée d'un souvenir `long_mem:N` ou `exchange:N`).
+Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs à partir de la mémoire longue), `/tool compact` (consolidation par thèmes, seuil de similarité 0.85), `/tool forget <id>` (suppression ciblée d'un souvenir `long_mem:N` ou `exchange:N`), `/clear mem` (vide la mémoire courte), `/clear clavier` (vide l'historique clavier).
 
 ### 🗂️ Skill Router
 - Détection automatique du skill pertinent par **mots-clés** ou **similarité vectorielle**
@@ -82,24 +82,24 @@ Le cœur de la différence avec la génération précédente : le LLM reçoit le
 
 ### 🛠️ Tool Executor
 Outils intégrés, certains nécessitant une **confirmation explicite** (terminal : O/n, Telegram : boutons inline ✅/❌) :
-| Outil              | Description                                                                                                                     | Confirmation         |
-|---                 |---                                                                                                                              |---                   |
-| `date`             | Date et heure courante                                                                                                          | Non                  |
-| `calc`             | Calcul mathématique (process isolé, timeout 2s, garde-fous anti-DoS sur les exposants)                                          | Non                  |
-| `shell`            | Exécution shell en liste blanche (df, free, uptime, uname, ls, pwd, date, cat, echo, hostname, whoami, top, ps, du, lscpu, vcgencmd, python3)    | Non |
-| `read`             | Lecture d'un fichier (bloque les chemins sensibles : identifiants/secrets)                                                      | Non                  |
-| `search`           | Recherche sémantique dans la mémoire vectorielle                                                                                | Non                  |
-| `mem`              | Affiche la mémoire longue                                                                                                       | Non                  |
-| `remember`         | Mémorise un fait manuellement                                                                                                   | Non                  |
-| `write`            | Écriture dans le workspace (nom borné, pas de chemin/fichier caché)                                                             | **Oui**              |
-| `write_skill`      | Écrit un nouveau skill Markdown (validation frontmatter)                                                                        | Non (autonomie)      |
-| `add_theme_keyword`| Ajoute un mot-clé à un thème de mémoire longue                                                                                  | Non (autonomie)      |
-| `net`              | Diagnostic réseau (ping + test TCP 443) vers un hôte                                                                            | Non                  |
-| `notify`           | Notification Telegram                                                                                                           | **Oui**              |
-| `cron`             | Planif./suppr. tâche headless (`list` reste libre) — exposé avec `cron_list`/`cron_add`/`cron_remove` dans la boucle agentique  | **Oui** (add/remove) |
-| `reindex`          | Reconstruction de l'index vectoriel depuis la mémoire longue                                                                    | Non                  |
-| `forget`           | Suppression d'un souvenir (mémoire longue ou vecteur d'échange)                                                                 | **Oui**              |
-| `audit_autonomy`   | Liste les dernières écritures autonomes journalisées (skills, thèmes)                                                           | Non (lecture seule)  |
+| Outil              | Description                                                                                                                                      | Confirmation         |
+|---                 |---                                                                                                                                               |---                   |
+| `date`             | Date et heure courante                                                                                                                           | Non                  |
+| `calc`             | Calcul mathématique (process isolé, timeout 2s, garde-fous anti-DoS sur les exposants)                                                           | Non                  |
+| `shell`            | Exécution shell en liste blanche (df, free, uptime, uname, ls, pwd, date, cat, echo, hostname, whoami, top, ps, du, lscpu, vcgencmd, python3)    | Non                  |
+| `read`             | Lecture d'un fichier (bloque les chemins sensibles : identifiants/secrets)                                                                       | Non                  |
+| `search`           | Recherche sémantique dans la mémoire vectorielle                                                                                                 | Non                  |
+| `mem`              | Affiche la mémoire longue                                                                                                                        | Non                  |
+| `remember`         | Mémorise un fait manuellement                                                                                                                    | Non                  |
+| `write`            | Écriture dans le workspace (nom borné, pas de chemin/fichier caché)                                                                              | **Oui**              |
+| `write_skill`      | Écrit un nouveau skill Markdown (validation frontmatter)                                                                                         | Non (autonomie)      |
+| `add_theme_keyword`| Ajoute un mot-clé à un thème de mémoire longue                                                                                                   | Non (autonomie)      |
+| `net`              | Diagnostic réseau (ping + test TCP 443) vers un hôte                                                                                             | Non                  |
+| `notify`           | Notification Telegram                                                                                                                            | **Oui**              |
+| `cron`             | Planif./suppr. tâche headless (`list` reste libre) — exposé avec `cron_list`/`cron_add`/`cron_remove` dans la boucle agentique                   | **Oui** (add/remove) |
+| `reindex`          | Reconstruction de l'index vectoriel depuis la mémoire longue                                                                                     | Non                  |
+| `forget`           | Suppression d'un souvenir (mémoire longue ou vecteur d'échange)                                                                                  | **Oui**              |
+| `audit_autonomy`   | Liste les dernières écritures autonomes journalisées (skills, thèmes)                                                                            | Non (lecture seule)  |
 
 > ℹ️ `compact` n'est pas exposé dans l'exécuteur d'outils : la consolidation de la mémoire longue par thèmes se fait uniquement via la commande directe `/compact` (voir tableau « Mémoire et recherche » plus bas).
 **Sécurité outils** : `shell` et `read` bloquent explicitement les fichiers sensibles (`.groq_config`, `.telegram_config`, etc.), `calc` tourne dans un process isolé tuable (protection DoS), `write`/`write_skill` sont bornés au dossier autorisé sans traversée de chemin. `cron` ne planifie **jamais** de commande arbitraire : il ne fait que reprogrammer une ré-exécution de `agent_groq_ng.py --headless-task`, un mode sans aucun outil (texte seul), dont le résultat est écrit dans le workspace puis notifié via Telegram.
@@ -262,20 +262,20 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 
 ## Commandes disponibles (terminal)
 
-### Navigation et configuration
-| Commande            | Description                                                      |
-|---                  |---                                                               |
-| `/help`             | Affiche toutes les commandes disponibles                         |
-| `/model [1-5]`      | Change le modèle Groq (sans argument : affiche la liste)         |
-| `/user <prénom>`    | Change le prénom utilisé par l'agent                             |
-| `/tokens <n>`       | Change le nombre max de tokens de réponse                        |
-| `/temp <val>`       | Change la température (0.0–1.0)                                  |
-| `/history_size <n>` | Change le nombre de messages conservés en mémoire courte         |
-| `/clear`            | Efface la mémoire courte (utile après une erreur 429 rate limit) |
-| `/reflect [on/off]` | Active/désactive l'auto-évaluation des réponses                  |
-| `/config`           | Affiche la configuration actuelle                                |
-| `/doctor`           | Diagnostic système                                               |
-| `/quit`             | Quitte l'agent proprement (aussi `/q`, `/exit`)                  |
+### Navigation et configuration 
+| Commande                     | Description                                                                                                                                                                 |
+|---                           |---                                                                                                                                                                          |
+| `/help`                      | Affiche toutes les commandes disponibles                                                                                                                                    |
+| `/model [1-5]`               | Change le modèle Groq (sans argument : affiche la liste)                                                                                                                    |
+| `/user <prénom>`             | Change le prénom utilisé par l'agent                                                                                                                                        |
+| `/tokens <n>`                | Change le nombre max de tokens de réponse                                                                                                                                   |
+| `/temp <val>`                | Change la température (0.0–1.0)                                                                                                                                             |
+| `/history_size <n>`          | Change le nombre de messages conservés en mémoire courte                                                                                                                    |
+| `/clear [mem\|clavier\|all]` | Sans argument ou `mem` : efface la mémoire courte (utile après une erreur 429 rate limit). `clavier` : vide l'historique clavier ↑↓ (`.readline_history`). `all` : les deux |
+| `/reflect [on/off]`          | Active/désactive l'auto-évaluation des réponses                                                                                                                             |
+| `/config`                    | Affiche la configuration actuelle                                                                                                                                           |
+| `/doctor`                    | Diagnostic système                                                                                                                                                          |
+| `/quit`                      | Quitte l'agent proprement (aussi `/q`, `/exit`)                                                                                                                             |
 
 ### Mémoire et recherche
 | Commande            | Description                                           |
@@ -297,21 +297,21 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/delete <n ou n°>` | Supprime un skill             |
 
 ### Outils, skills & vision
-| Commande                                           | Description                                           |
-|---                                                 |---                                                    |
-| `/tool date`                                       | Affiche la date et l'heure                            |
-| `/tool calc <expr>`                                | Calcule une expression mathématique                   |
+| Commande                                           | Description                                                                                                                                              |
+|---                                                 |---                                                                                                                                                       |
+| `/tool date`                                       | Affiche la date et l'heure                                                                                                                               |
+| `/tool calc <expr>`                                | Calcule une expression mathématique                                                                                                                      |
 | `/tool shell <cmd>`                                | Exécute une commande shell en liste blanche (df, free, uptime, uname, ls, pwd, date, cat, echo, hostname, whoami, top, ps, du, lscpu, vcgencmd, python3) |
-| `/tool read <chemin>`                              | Lit un fichier (chemins sensibles bloqués)            |
-| `/tool write <fichier>`                            | Écrit dans le workspace (avec confirmation)           |
-| `/tool write_skill <nom> :: <frontmatter+contenu>` | Crée/màj un skill (autonome, garde-fous …)            |
-| `/tool add_theme_keyword <thème> :: <mot-clé>`     | Ajoute un mot-clé de thème (autonome)                 |
-| `/tool audit_autonomy [n]`                         | Liste les n dernières écritures autonomes (défaut 10) |
-| `/tool net <hôte>`                                 | Diagnostic réseau ping + TCP 443                      |
-| `/tool notify <msg>`                               | Envoie une notification Telegram (avec confirmation)  |
-| `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)       |
-| `/tools`                                           | Liste les outils disponibles                          |
-| `/image`                                           | Analyse une image (vision, `qwen/qwen3.8-27b`)        |
+| `/tool read <chemin>`                              | Lit un fichier (chemins sensibles bloqués)                                                                                                               |
+| `/tool write <fichier>`                            | Écrit dans le workspace (avec confirmation)                                                                                                              |
+| `/tool write_skill <nom> :: <frontmatter+contenu>` | Crée/màj un skill (autonome, garde-fous …)                                                                                                               |
+| `/tool add_theme_keyword <thème> :: <mot-clé>`     | Ajoute un mot-clé de thème (autonome)                                                                                                                    |
+| `/tool audit_autonomy [n]`                         | Liste les n dernières écritures autonomes (défaut 10)                                                                                                    |
+| `/tool net <hôte>`                                 | Diagnostic réseau ping + TCP 443                                                                                                                         |
+| `/tool notify <msg>`                               | Envoie une notification Telegram (avec confirmation)                                                                                                     |
+| `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)                                                                                                          |
+| `/tools`                                           | Liste les outils disponibles                                                                                                                             |
+| `/image`                                           | Analyse une image (vision, `qwen/qwen3.8-27b`)                                                                                                           |
 
 
 ## Limites Groq (version gratuite)
@@ -343,4 +343,4 @@ __pycache__/
 
 ## Auteur
 **Jean-François Brunet** — [JFBConseils](https://github.com/JeanFrancoisBrunet)
-Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Août 2026*
+Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Août / Septembre 2026*
