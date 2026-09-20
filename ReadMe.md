@@ -49,7 +49,7 @@ Le projet est composé de deux fichiers Python :
 - **Index vectoriel** (`vectors.json`) : embeddings locaux (sentence-transformers) pour recherche sémantique
 - **Historique clavier** (`.readline_history`) : navigation ↑↓ dans le terminal, plafonné à 500 lignes (troncature automatique à la sauvegarde)
 
-Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs à partir de la mémoire longue), `/tool forget <id>` (suppression ciblée d'un souvenir `long_mem:N` ou `exchange:N`), `/clear mem` (vide la mémoire courte), `/clear clavier` (vide l'historique clavier), et la commande directe `/compact` (voir ci-dessous).
+Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs à partir de la mémoire longue), `/tool forget <id>` (suppression ciblée d'un souvenir `long_mem:N`, `exchange:N` ou d'un fichier indexé `file:<nom>` — l'id est celui affiché par `/tool search`), `/clear mem` (vide la mémoire courte), `/clear clavier` (vide l'historique clavier), et la commande directe `/compact` (voir ci-dessous).
 
 #### `/compact` — dédoublonnage et consolidation
 - **Moins de 10 faits** : simple dédoublonnage textuel (Jaccard, seuil 0.85).
@@ -125,7 +125,22 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 
 ### 🔄 Self-Reflection (`/reflect`)
 L'agent évalue et améliore sa propre réponse avant de l'afficher (`/reflect on|off`, mémorisé dans `config.yaml`).
-Désactivé par défaut dans la configuration générée (`reflect: false`). Lorsqu'il est actif, l'évaluateur reçoit la question, la réponse **et les faits mémorisés sur l'utilisateur**, avec l'interdiction de remplacer un fait personnel par une connaissance générale (sans cela, une réponse correcte pouvait être « corrigée » à tort).
+Désactivé par défaut dans la configuration générée (`reflect: false`). Lorsqu'il est actif, l'évaluateur reçoit la question, la réponse **et les faits mémorisés sur l'utilisateur**, avec l'interdiction de remplacer un fait personnel par une connaissance générale (sans cela, une réponse correcte pouvait être « corrigée » à tort). Si un fichier est joint avec `/file` (voir ci-dessous), l'évaluateur en reçoit aussi le début (3000 car. max) comme **texte de référence** et n'a pas le droit de changer de sujet : sans cela, il ne voyait que « résume ce texte », ne pouvait rien vérifier et « améliorait » la réponse avec la mémoire longue, d'où une réponse hors sujet. `/reflect off` n'est donc **pas** nécessaire pour utiliser `/file`.
+
+### 📎 Fichier joint au prompt (`/file`)
+Joint un fichier texte au prompt système (bloc « Fichier joint »), pour l'analyser, le résumer ou l'interroger sans passer par l'outil `read` (limité à 3000 caractères).
+
+```
+/file ~/Projects/eSpeak/histoire_txt.txt résume ce texte    # joint + pose la question
+/file "~/mon dossier/notes.txt"                             # chemin avec espaces : guillemets
+/file                                                       # affiche le fichier joint (ou l'usage)
+/file clear                                                 # détache (aussi : off, none)
+```
+
+- **Persistant** : le fichier reste joint à **chaque** message jusqu'à `/file clear`. Le prompt de saisie l'indique : `Jean-François 📎 histoire_txt.txt :` (nom raccourci au-delà de 30 caractères).
+- **Plafond selon le modèle** (`_attachment_char_limit`) : ~1 caractère par token de budget tokens/minute, soit **6 000 car.** avec GPT-OSS 120B, **8 000** avec Qwen 3.8 27B, **30 000** avec GPT-OSS 20B (plafond absolu `ATTACH_ABS_MAX_CHARS`). Au-delà, le fichier est tronqué et un avertissement est affiché. Pour un fichier plus long : `/model 2`.
+- **Garde-fous** : mêmes refus que `read` pour les fichiers sensibles (identifiants/secrets) ; fichiers de plus de 200 Ko et fichiers binaires refusés. Le contenu est présenté au modèle comme une donnée à analyser, pas comme des instructions, et il lui est demandé de ne pas rappeler `read` dessus (un appel inutile ajoutait des tokens et pouvait déclencher une erreur 429).
+- **Terminal uniquement** (pas d'équivalent dans le bot Telegram). Le fichier n'est ni copié ni indexé : seule la question est enregistrée dans l'historique. L'extraction de faits et la détection de skills ne voient pas le fichier joint.
 
 ### 🤖 Modèles Groq disponibles (`/model`)
 > ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq. `groq/compound` et `groq/compound-mini` ont été annoncés dépréciés par Groq (décommissionnement au 21/09/2026) et retirés de la liste. `qwen/qwen3.6-27b` a été annoncé déprécié par Groq le 02/09/2026 (décommissionnement au 14/09/2026, routage automatique vers `qwen/qwen3.8-27b` après cette date) et remplacé ici directement par `qwen/qwen3.8-27b`. Il ne reste que 3 modèles.
@@ -295,16 +310,16 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/quit`                      | Quitte l'agent proprement (aussi `/q`, `/exit`)                                                                                                                             |
 
 ### Mémoire et recherche
-| Commande            | Description                                                  |
-|---                  |---                                                           |
-| `/mem`              | Affiche la mémoire longue                                    |
-| `/history`          | Affiche les échanges de la mémoire courte                    |
-| `/search <texte>`   | Recherche sémantique dans la mémoire vectorielle             |
-| `/remember <fait>`  | Mémorise un fait manuellement                                |
-| `/compact`          | < 10 faits : dédoublonnage ; ≥ 10 : consolidation par thèmes |
-| `/themes`           | Liste les thèmes de mémoire longue                           |
-| `/tool reindex`     | Reconstruit `vectors.json` à partir `long_mem.json`          |
-| `/tool forget <id>` | Supprime un souvenir (`long_mem:N` ou `exchange:N`)          |
+| Commande            | Description                                                                                                  |
+|---                  |---                                                                                                           |
+| `/mem`              | Affiche la mémoire longue                                                                                    |
+| `/history`          | Affiche les échanges de la mémoire courte                                                                    |
+| `/search <texte>`   | Recherche sémantique (résultats affichés sur une ligne, ids `exchange:N`, `long_mem:N`, `skill:…`, `file:…`) |
+| `/remember <fait>`  | Mémorise un fait manuellement                                                                                |
+| `/compact`          | < 10 faits : dédoublonnage ; ≥ 10 : consolidation par thèmes                                                 |
+| `/themes`           | Liste les thèmes de mémoire longue                                                                           |
+| `/tool reindex`     | Reconstruit `vectors.json` à partir `long_mem.json`                                                          |
+| `/tool forget <id>` | Supprime un souvenir (`long_mem:N`, `exchange:N` ou `file:<nom>`)                                            |
 
 ### Skills
 | Commande            | Description                   |
@@ -330,6 +345,7 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)                                                                                                          |
 | `/tools`                                           | Liste les outils disponibles                                                                                                                             |
 | `/image`                                           | Analyse une image (vision, `qwen/qwen3.8-27b`)                                                                                                           |
+| `/file <chemin> [question]`                        | Joint un fichier texte au prompt (jusqu'à `/file clear`), plafond selon le modèle                                                                        |
 
 
 ## Limites Groq (version gratuite)
@@ -363,4 +379,4 @@ __pycache__/
 
 ## Auteur
 **Jean-François Brunet** — [JFBConseils](https://github.com/JeanFrancoisBrunet)
-Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Août / Septembre 2026*
+Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Septembre 2026*
