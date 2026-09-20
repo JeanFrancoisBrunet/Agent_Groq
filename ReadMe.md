@@ -49,21 +49,32 @@ Le projet est composé de deux fichiers Python :
 - **Index vectoriel** (`vectors.json`) : embeddings locaux (sentence-transformers) pour recherche sémantique
 - **Historique clavier** (`.readline_history`) : navigation ↑↓ dans le terminal, plafonné à 500 lignes (troncature automatique à la sauvegarde)
 
-Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs à partir de la mémoire longue), `/tool compact` (consolidation par thèmes, seuil de similarité 0.85), `/tool forget <id>` (suppression ciblée d'un souvenir `long_mem:N` ou `exchange:N`), `/clear mem` (vide la mémoire courte), `/clear clavier` (vide l'historique clavier).
+Outils de maintenance de la mémoire : `/tool reindex` (reconstruit les vecteurs à partir de la mémoire longue), `/tool forget <id>` (suppression ciblée d'un souvenir `long_mem:N` ou `exchange:N`), `/clear mem` (vide la mémoire courte), `/clear clavier` (vide l'historique clavier), et la commande directe `/compact` (voir ci-dessous).
+
+#### `/compact` — dédoublonnage et consolidation
+- **Moins de 10 faits** : simple dédoublonnage textuel (Jaccard, seuil 0.85).
+- **10 faits ou plus** : **consolidation thématique** par LLM (`openai/gpt-oss-20b`, sortie JSON `json_schema` strict) — chaque fait est classé dans un thème de `themes.yaml`, et chaque thème reçoit une phrase de synthèse (max 150 mots). La mémoire longue est alors **remplacée** par ces entrées (une par thème non vide).
+- **Déclenchement automatique** en arrière-plan : dédoublonnage tous les 10 faits, consolidation tous les 30 faits.
+- **Robustesse** : si Groq rejette la réponse (`400 json_validate_failed`, typiquement parce que le modèle a omis la clé d'un thème sans fait), le JSON est récupéré localement depuis `failed_generation` et les clés manquantes sont complétées par `null` — sans appel API supplémentaire. Le retry éventuel rappelle explicitement la liste complète des clés. Les 429 (TPM) sont retentés après le délai indiqué par Groq ; un quota journalier épuisé est signalé sans retry.
+- **Sauvegarde préalable** : avant l'écrasement, `long_mem.json` est copié en `long_mem.json.bak-AAAAMMJJ-HHMMSS` (les 5 dernières sont conservées) pour retrouver un fait qu'un thème mal résumé aurait fait perdre.
+
+#### Injection dans le prompt
+Le prompt système reçoit **toutes** les entrées issues d'une consolidation (une par thème) **plus** les 8 faits bruts les plus récents. L'auto-évaluation (`/reflect`) reçoit les mêmes faits.
 
 ### 🗂️ Skill Router
 - Détection automatique du skill pertinent par **mots-clés** ou **similarité vectorielle**
 - Skills stockés en fichiers Markdown avec frontmatter YAML (`~/Projects/Groq_agent/.myagent/skills/*.md`)
 - Proposition automatique de nouveaux skills détectés en arrière-plan pendant la conversation (`detect_skill_opportunity`), avec sauvegarde soumise à confirmation en mode terminal
-- **`/tool write_skill`** et **`/tool add_theme_keyword`** : l'agent peut créer/mettre à jour ses propres skills et sa mémoire thématique **sans validation humaine** (autonomie assumée), encadré par cinq garde-fous automatiques (voir ci-dessous), unifiés dans `guarded_save_skill()` — le point d'entrée commun aux trois chemins d'écriture (tool `write_skill`, détection CLI confirmée, auto-save Telegram sans confirmation)
+- **`/tool write_skill`** et **`/tool add_theme_keyword`** : l'agent peut créer/mettre à jour ses propres skills et sa mémoire thématique **sans validation humaine** (autonomie assumée), encadré par six garde-fous automatiques (voir ci-dessous), unifiés dans `guarded_save_skill()` — le point d'entrée commun aux trois chemins d'écriture (tool `write_skill`, détection CLI confirmée, auto-save Telegram sans confirmation)
 
 ### 🛡️ Garde-fous d'autonomie (skills et thèmes)
-`write_skill` et `add_theme_keyword` restent volontairement sans confirmation humaine. Cinq mécanismes automatiques encadrent la qualité de ces écritures sans jamais réintroduire de confirmation :
+`write_skill` et `add_theme_keyword` restent volontairement sans confirmation humaine. Six mécanismes automatiques encadrent la qualité de ces écritures sans jamais réintroduire de confirmation :
 - **Plafond de taille à la création** (`MAX_SKILL_CONTEXT_CHARS`, 3200 car.) — un skill trop long est refusé avant même le dédoublonnage/score (évite deux appels LLM inutiles), pour ne jamais créer un skill qui serait de toute façon tronqué à l'injection (voir plus bas).
 - **Dédoublonnage sémantique** (`_find_similar_skill`) — compare l'embedding du skill candidat à ceux déjà vectorisés (similarité cosinus, seuil 0.85). En cas de doublon probable, l'écriture est refusée et l'agent est redirigé vers une mise à jour du skill existant. Complète le dédoublonnage textuel (Jaccard) de `detect_skill_opportunity`.
-- **Second regard qualité** (`_llm_score_skill_quality`) — un appel LLM léger (`llama-3.1-8b-instant`), sur le principe du Self-Reflection Engine, évalue trois critères (pertinent / autonome / non trivial) avant écriture. Sous 0.6, le skill n'est pas créé. Fail-open en cas d'erreur technique.
+- **Second regard qualité** (`_llm_score_skill_quality`) — un appel LLM léger (`openai/gpt-oss-20b`), sur le principe du Self-Reflection Engine, évalue trois critères (pertinent / autonome / non trivial) avant écriture. Le modèle utilisé est `openai/gpt-oss-20b`. Sous 0.6, le skill n'est pas créé. Fail-open en cas d'erreur technique.
+- **Refus des références de modèles périmées** (`_check_stale_model_refs`) — contrôle déterministe, sans appel LLM : un skill qui cite un identifiant de modèle absent de `GROQ_MODELS` (déprécié ou halluciné : mixtral, llama-3-8b, gemma…) est refusé (`skill_stale_model_rejected`).
 - **Vectorisation immédiate** — le skill est vectorisé dès son écriture (`save_skill`), pour que le dédoublonnage sémantique et le routage vectoriel le voient sans attendre un redémarrage.
-- **Traçabilité et anti-emballement** — chaque écriture autonome est journalisée dans `events.log` (`skill_written`, `skill_too_long_rejected`, `theme_updated`, `skill_deduped`, `skill_quality_rejected`), consultable via `/tool audit_autonomy [n]`. Un seuil purement informatif (`max_auto_writes_per_day`, `config.yaml`, défaut 10) déclenche une alerte visible dans `/doctor` au-delà, sans jamais bloquer l'écriture.
+- **Traçabilité et anti-emballement** — chaque écriture autonome est journalisée dans `events.log` (`skill_written`, `skill_too_long_rejected`, `theme_updated`, `skill_deduped`, `skill_quality_rejected`, `skill_stale_model_rejected`), consultable via `/tool audit_autonomy [n]`. Un seuil purement informatif (`max_auto_writes_per_day`, `config.yaml`, défaut 10) déclenche une alerte visible dans `/doctor` au-delà, sans jamais bloquer l'écriture.
 
 ### 🔗 Fiabilité multi-processus (CLI ↔ Telegram)
 Le CLI et le bot Telegram sont deux processus indépendants qui partagent leurs fichiers de données (mémoire, skills, `config.yaml`) mais pas leur état mémoire :
@@ -75,7 +86,7 @@ Le CLI et le bot Telegram sont deux processus indépendants qui partagent leurs 
 Le cœur de la différence avec la génération précédente : le LLM reçoit les outils via l'API **function-calling** native (compatible OpenAI/Groq) et peut les appeler **lui-même**, au lieu d'écrire une commande que l'utilisateur devrait taper.
 
 - **`run_agentic_turn()`** — boucle type ReAct : le modèle propose un appel d'outil → le code l'exécute → le résultat est réinjecté dans la conversation → le modèle décide d'enchaîner un autre outil ou de conclure. Jusqu'à **6 allers-retours** par tour (`MAX_AGENT_STEPS`), garde-fou anti-emballement au-delà duquel une réponse est forcée et l'événement journalisé.
-- **Aucune régression de sécurité** — `execute_tool()`, `tool_call_needs_confirmation()` et `preview_tool_action()` sont les mêmes qu'en exécution manuelle. Les 4 outils sensibles (`write`, `cron` ajout/suppression, `notify`, `forget`) déclenchent toujours une confirmation humaine avant toute exécution réelle, que l'appel vienne d'une commande tapée ou d'une décision autonome du modèle.
+- **Aucune régression de sécurité** — `execute_tool()`, `tool_call_needs_confirmation()` et `preview_tool_action()` sont les mêmes qu'en exécution manuelle. Les 4 outils sensibles (`write`, `cron` ajout/suppression, `notify`, `forget`) déclenchent toujours une confirmation humaine avant toute exécution réelle (de même que `run` lorsqu'un argument à risque comme `--live` est passé), que l'appel vienne d'une commande tapée ou d'une décision autonome du modèle.
 - **`cron`** est exposé au modèle en 3 sous-outils (`cron_list`/`cron_add`/`cron_remove`) — les LLM gèrent mieux des paramètres nommés qu'une sous-commande encodée en texte libre ; `execute_tool()` reste inchangé côté exécution.
 - **Confirmation côté Telegram** — `run_agentic_turn()` est bloquant et attend une réponse synchrone de son callback de confirmation, alors que Telegram répond via un clic de bouton, potentiellement bien plus tard. Le bot fait le pont avec `_make_agentic_confirm()` : le thread d'exécution attend sur un `threading.Event` pendant que les boutons ✅/❌ sont envoyés sur la boucle asyncio (`run_coroutine_threadsafe`) ; le clic débloque l'attente. **Timeout de 120 s** : sans réponse, l'action est annulée par prudence plutôt que de bloquer le thread indéfiniment.
 - Le mode manuel (`/tool <nom> [args]`) reste disponible en parallèle, inchangé, sur les deux interfaces.
@@ -100,8 +111,11 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 | `reindex`          | Reconstruction de l'index vectoriel depuis la mémoire longue                                                                                     | Non                  |
 | `forget`           | Suppression d'un souvenir (mémoire longue ou vecteur d'échange)                                                                                  | **Oui**              |
 | `audit_autonomy`   | Liste les dernières écritures autonomes journalisées (skills, thèmes)                                                                            | Non (lecture seule)  |
+| `run`              | Lance un script externe pré-approuvé (liste blanche fermée `LAUNCHABLE_SCRIPTS`)                                                                 | Conditionnelle       |
 
 > ℹ️ `compact` n'est pas exposé dans l'exécuteur d'outils : la consolidation de la mémoire longue par thèmes se fait uniquement via la commande directe `/compact` (voir tableau « Mémoire et recherche » plus bas).
+**`run`** — liste blanche fermée de scripts (`emails_scan` : scan/classement Gmail + Outlook ; `suivi_timekeeping_omega` : relevé de prix Omega). Chaque script déclare ses arguments autorisés (motifs regex), un timeout (300 s) et les arguments qui exigent une confirmation : `emails_scan` en dry-run est autonome, `--live` déclenche la confirmation. Aucune commande arbitraire n'est acceptée.
+
 **Sécurité outils** : `shell` et `read` bloquent explicitement les fichiers sensibles (`.groq_config`, `.telegram_config`, etc.), `calc` tourne dans un process isolé tuable (protection DoS), `write`/`write_skill` sont bornés au dossier autorisé sans traversée de chemin. `cron` ne planifie **jamais** de commande arbitraire : il ne fait que reprogrammer une ré-exécution de `agent_groq_ng.py --headless-task`, un mode sans aucun outil (texte seul), dont le résultat est écrit dans le workspace puis notifié via Telegram.
 
 ### 🖼️ Analyse d'images (Vision)
@@ -110,8 +124,8 @@ Outils intégrés, certains nécessitant une **confirmation explicite** (termina
 - La légende de la photo (Telegram) sert de question optionnelle à l'analyse
 
 ### 🔄 Self-Reflection (`/reflect`)
-L'agent évalue et améliore sa propre réponse avant de l'afficher.
-Activé par défaut sur les 3 modèles disponibles.
+L'agent évalue et améliore sa propre réponse avant de l'afficher (`/reflect on|off`, mémorisé dans `config.yaml`).
+Désactivé par défaut dans la configuration générée (`reflect: false`). Lorsqu'il est actif, l'évaluateur reçoit la question, la réponse **et les faits mémorisés sur l'utilisateur**, avec l'interdiction de remplacer un fait personnel par une connaissance générale (sans cela, une réponse correcte pouvait être « corrigée » à tort).
 
 ### 🤖 Modèles Groq disponibles (`/model`)
 > ⚠️ Llama 3.3 70B et Llama 3.1 8B ont été retirés de la plateforme Groq. `groq/compound` et `groq/compound-mini` ont été annoncés dépréciés par Groq (décommissionnement au 21/09/2026) et retirés de la liste. `qwen/qwen3.6-27b` a été annoncé déprécié par Groq le 02/09/2026 (décommissionnement au 14/09/2026, routage automatique vers `qwen/qwen3.8-27b` après cette date) et remplacé ici directement par `qwen/qwen3.8-27b`. Il ne reste que 3 modèles.
@@ -122,8 +136,10 @@ Activé par défaut sur les 3 modèles disponibles.
 | 2 | GPT-OSS 20B        | Rapide & performant    | 128k     | 30k   |
 | 3 | Qwen 3.8 27B       | Raisonnement avancé    | 128k     | 8k    |
 
+Modèles fixes utilisés en interne, indépendants de `/model` : `openai/gpt-oss-20b` (extraction des faits, consolidation mémoire, détection et scoring des skills) et `qwen/qwen3.8-27b` (vision).
+
 ### 🩺 Doctor — diagnostic système (`/doctor`)
-Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/validité des fichiers de données, contention des verrous inter-processus, quota RPD, disponibilité des embeddings, espace disque, historique clavier, intégrité des skills, threads actifs, journal d'événements, rythme d'écritures autonomes (skills/thèmes), et configuration Telegram (`notify`).
+Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/validité des fichiers de données (`history.json`, `long_mem.json`, `vectors.json`, `config.yaml`, `themes.yaml`), contention des verrous inter-processus, quota RPD, disponibilité des embeddings, espace disque, historique clavier, intégrité des skills, threads actifs, journal d'événements, rythme d'écritures autonomes (skills/thèmes), et configuration Telegram (`notify`).
 
 ### 🔒 Sécurité & robustesse
 - Verrous inter-processus (`fcntl.flock`, timeout 10s) sur tous les fichiers JSON partagés entre l'agent terminal et le bot Telegram
@@ -146,7 +162,7 @@ Interface Telegram qui **importe directement** les fonctions de `agent_groq_ng.p
 | `/status`           | Modèle actif, température, tokens max, nombre de skills        |
 | `/doctor`           | Diagnostic système                                             |
 | `/model`            | Affiche les modèles disponibles (sans argument)                |
-| `/model <n>`        | Change de modèle Groq (n = 1 à 5), boutons inline de sélection |
+| `/model <n>`        | Change de modèle Groq (n = 1 à 3), boutons inline de sélection |
 | `/clear`            | Vide l'historique de conversation (mémoire courte)             |
 | `/mem`              | Affiche la mémoire longue                                      |
 | `/compact`          | Consolide la mémoire longue par thèmes                         |
@@ -193,6 +209,7 @@ Agent_Groq/
 ├── themes.yaml              # Thèmes et mots-clés pour la mémoire longue
 ├── history.json             # Mémoire courte (conversations récentes)
 ├── long_mem.json            # Mémoire longue (faits extraits)
+├── long_mem.json.bak-*      # Sauvegardes avant consolidation (5 dernières)
 ├── vectors.json             # Index vectoriel (embeddings)
 ├── skills/                  # Skills Markdown de l'agent
 ├── workspace/               # Fichiers écrits par /tool write et tâches cron
@@ -202,7 +219,7 @@ Agent_Groq/
 
 ## Prérequis
 - Python 3.10+
-- Raspberry Pi 5 (testé sur 16 Go RAM, SSD NVMe 256 Go, OS Bookworm) — ou toute machine Linux
+- Raspberry Pi 5 (testé sur 16 Go RAM, SSD NVMe 1 To, OS Bookworm) — ou toute machine Linux
 - Un compte [Groq](https://console.groq.com/) avec une clé API (gratuit)
 - *(Optionnel)* Un bot Telegram créé via [@BotFather](https://t.me/BotFather) — requis pour `telegram_bot_groq_ng.py` et pour `/tool notify`
 
@@ -266,7 +283,7 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | Commande                     | Description                                                                                                                                                                 |
 |---                           |---                                                                                                                                                                          |
 | `/help`                      | Affiche toutes les commandes disponibles                                                                                                                                    |
-| `/model [1-5]`               | Change le modèle Groq (sans argument : affiche la liste)                                                                                                                    |
+| `/model [1-3]`               | Change le modèle Groq (sans argument : affiche la liste)                                                                                                                    |
 | `/user <prénom>`             | Change le prénom utilisé par l'agent                                                                                                                                        |
 | `/tokens <n>`                | Change le nombre max de tokens de réponse                                                                                                                                   |
 | `/temp <val>`                | Change la température (0.0–1.0)                                                                                                                                             |
@@ -278,16 +295,16 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/quit`                      | Quitte l'agent proprement (aussi `/q`, `/exit`)                                                                                                                             |
 
 ### Mémoire et recherche
-| Commande            | Description                                           |
-|---                  |---                                                    |
-| `/mem`              | Affiche la mémoire longue                             |
-| `/history`          | Affiche les échanges de la mémoire courte             |
-| `/search <texte>`   | Recherche sémantique dans la mémoire vectorielle      |
-| `/remember <fait>`  | Mémorise un fait manuellement                         |
-| `/compact`          | Compacte et consolide la mémoire longue par thèmes    |
-| `/themes`           | Liste les thèmes de mémoire longue                    |
-| `/tool reindex`     | Reconstruit `vectors.json` à partir `long_mem.json`   |
-| `/tool forget <id>` | Supprime un souvenir (`long_mem:N` ou `exchange:N`)   |
+| Commande            | Description                                                  |
+|---                  |---                                                           |
+| `/mem`              | Affiche la mémoire longue                                    |
+| `/history`          | Affiche les échanges de la mémoire courte                    |
+| `/search <texte>`   | Recherche sémantique dans la mémoire vectorielle             |
+| `/remember <fait>`  | Mémorise un fait manuellement                                |
+| `/compact`          | < 10 faits : dédoublonnage ; ≥ 10 : consolidation par thèmes |
+| `/themes`           | Liste les thèmes de mémoire longue                           |
+| `/tool reindex`     | Reconstruit `vectors.json` à partir `long_mem.json`          |
+| `/tool forget <id>` | Supprime un souvenir (`long_mem:N` ou `exchange:N`)          |
 
 ### Skills
 | Commande            | Description                   |
@@ -307,6 +324,7 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/tool write_skill <nom> :: <frontmatter+contenu>` | Crée/màj un skill (autonome, garde-fous …)                                                                                                               |
 | `/tool add_theme_keyword <thème> :: <mot-clé>`     | Ajoute un mot-clé de thème (autonome)                                                                                                                    |
 | `/tool audit_autonomy [n]`                         | Liste les n dernières écritures autonomes (défaut 10)                                                                                                    |
+| `/tool run <script> [args]`                        | Lance un script pré-approuvé (`emails_scan`, `suivi_timekeeping_omega`) ; `--live` demande confirmation                                                  |
 | `/tool net <hôte>`                                 | Diagnostic réseau ping + TCP 443                                                                                                                         |
 | `/tool notify <msg>`                               | Envoie une notification Telegram (avec confirmation)                                                                                                     |
 | `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)                                                                                                          |
@@ -332,8 +350,10 @@ Créer un fichier `.gitignore` à la racine du projet :
 
 # Données personnelles générées
 long_mem.json
+long_mem.json.bak-*
 vectors.json
 history.json
+events.log
 
 # Fichiers Python générés
 __pycache__/

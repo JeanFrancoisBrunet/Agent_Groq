@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #  Agent IA Groq avec LPU (Language Processing Unit) & Cloud
-#  Raspberry Pi 5 (16 Go RAM, SSD NVMe 256 Go, OS Bookworm)
+#  Raspberry Pi 5 (16 Go RAM, SSD NVMe 1 To, OS Bookworm)
 #
 #  Composants :
 #    Context Builder      — mémoire courte + longue + profil utilisateur
@@ -12,8 +12,8 @@
 #                           lancement de scripts autonomes (liste blanche)
 #    Memory Engine        — court terme, long terme, vectoriel, clavier
 #    Self-Reflection      — l'agent juge sa réponse (/reflect On/Off)
-#                           par defaut  /reflect est "On" - modèles 1 à 5
-#                           et "Off" pour agents web - modèles 6 et 7
+#                           par defaut  /reflect est "On" - modèles 1 à 3
+#                           et "Off" pour agents web - modèles plus disponibles
 #    Formatter            — Rich, markdown, code, tableaux
 #
 #  Autonomie (/tool write, notify, cron, forget) :
@@ -62,10 +62,10 @@
 #    RPD : ~14 400/j sur GPT-OSS 20B
 #    Suivi : https://console.groq.com/settings/limits
 #
-#  Auteur : Jean-François BRUNET – JFBConseils – Aout 2026
+#  Auteur : Jean-François BRUNET – JFBConseils – Septembre 2026
 # =============================================================================
 
-# ── variables d'env AVANT tout import ─────────────────────────
+# ── variables d'env AVANT tout import ────────────────────────
 import os
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -74,7 +74,7 @@ os.environ.setdefault("HF_HUB_VERBOSITY", "error")
 import warnings
 warnings.filterwarnings("ignore", message=".*unauthenticated.*")
 warnings.filterwarnings("ignore", message=".*HF_TOKEN.*")
-# ──────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 
 import sys
 import json
@@ -186,7 +186,7 @@ TELEGRAM_CFG_FILE = Path.home() / ".telegram_config"   # volontairement à part 
                                                        # Telegram dans ~/Projects/Telegram
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 NETWORK_TIMEOUT = 30.0   # secondes — évite qu'un thread reste bloqué sur un appel réseau qui ne répond jamais
-CRON_TAG      = "agent_groq:managed"              # marqueur des lignes crontab gérées par l'agent
+CRON_TAG      = "agent_groq:managed"                   # marqueur des lignes crontab gérées par l'agent
 
 # ------------------------------------------------------------------
 # Registre des scripts autonomes que l'agent est autorisé à lancer via
@@ -205,9 +205,9 @@ LAUNCHABLE_SCRIPTS = {
         "allowed_arg_patterns": [
             r"^--live$",
             r"^--since-days$",
-            r"^\d{1,3}$",   # valeur numérique d'un --since-days
+            r"^\d{1,3}$",                    # valeur numérique d'un --since-days
         ],
-        "timeout": 300,           # secondes — script long (IMAP + appels Groq)
+        "timeout": 300,                      # secondes — script long (IMAP + appels Groq)
         "confirm_if_contains": {"--live"},   # dry-run = autonome, --live = confirmation
     },
     "suivi_timekeeping_omega": {
@@ -221,13 +221,13 @@ LAUNCHABLE_SCRIPTS = {
                                   # habituellement, donc 300s laisse une marge confortable
                                   # même en cas de site ralenti)
         "confirm_if_contains": set(),   # aucune action à risque : lecture web + écriture CSV
-                                          # append-only, déjà exécuté sans supervision via cron
+                                        # append-only, déjà exécuté sans supervision via cron
     },
 }
 
 def log_event(kind: str, message: str):
-    """Journalise un événement non bloquant (anomalie, avertissement) dans
-    events.log, sans jamais lever d'exception (best-effort)."""
+    """Journalise un événement non bloquant (anomalie, avertissement) dans events.log, 
+    sans jamais lever d'exception (best-effort)."""
     try:
         BASE_DIR.mkdir(parents=True, exist_ok=True)
         line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [{kind}] {message}\n"
@@ -807,7 +807,13 @@ def format_long_memory_for_prompt(max_facts: int = 10) -> str:
     if not mem:
         return ""
     lines = []
-    for e in mem[-max_facts:]:
+    # Les entrées issues de /compact (une par thème) sont toujours conservées :
+    # un simple mem[-max_facts:] les écartait dès que la consolidation en
+    # produisait plus que max_facts. On y ajoute les max_facts faits bruts les plus récents.
+    consolidated = [e for e in mem if e.get("source") == "consolidation"]
+    recent = [e for e in mem if e.get("source") != "consolidation"][-max_facts:]
+    selected = consolidated + recent
+    for e in selected:
         theme = e.get("theme", "")
         label = MEMORY_THEMES.get(theme, {}).get("label", "") if theme else ""
         prefix = f"[{label}] " if label else f"[{e['date']}] "
@@ -934,19 +940,25 @@ Règles :
 3. Si aucun fait ne correspond à un thème, laisse la valeur null.
 Réponds en JSON."""
 
-    # Structured Outputs en mode strict (constrained decoding) : contrairement
-    # à l'ancien response_format={"type": "json_object"} (JSON Object Mode,
-    # best-effort — peut renvoyer une erreur 400 json_validate_failed), le
-    # mode strict garantit une sortie qui respecte exactement ce schéma —
-    # jamais d'objet/liste imbriqué à la place d'une phrase, jamais d'erreur
-    # de validation. gpt-oss-20b/120b sont les seuls modèles Groq qui le
-    # supportent actuellement (llama-3.3-70b-versatile est déprécié chez Groq).
     consolidation_schema = {
         "type": "object",
         "properties": {k: {"type": ["string", "null"]} for k in themes_keys},
         "required": themes_keys,
         "additionalProperties": False,
     }
+
+    def _recover_failed_generation(body) -> dict | None:
+        """Extrait le JSON de error.failed_generation (400 json_validate_failed).
+        Retourne None si absent, vide ou non exploitable."""
+        try:
+            err = body.get("error", body) if isinstance(body, dict) else {}
+            fg = err.get("failed_generation") if isinstance(err, dict) else None
+            if not fg or not str(fg).strip():
+                return None
+            data = json.loads(fg) if isinstance(fg, str) else fg
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
 
     def _shape_errors(d: dict) -> list[str]:
         """Filet de sécurité résiduel : ne devrait plus jamais rien renvoyer
@@ -959,12 +971,7 @@ Réponds en JSON."""
             model="openai/gpt-oss-20b",
             messages=[{"role": "user", "content": prompt + extra_instruction}],
             max_tokens=4096, temperature=0.1,
-            reasoning_effort="low",  # gpt-oss-20b est un modèle de raisonnement : à
-            # effort "medium" (valeur par défaut), le raisonnement interne consommait
-            # une partie du budget de tokens avant même de produire le JSON — avec
-            # l'ancien max_tokens=800, ça pouvait laisser 0 token pour la réponse
-            # elle-même (generation vide -> json_validate_failed, failed_generation
-            # vide, même en mode strict).
+            reasoning_effort="low",  
             response_format={
                 "type": "json_schema",
                 "json_schema": {
@@ -1010,18 +1017,8 @@ Réponds en JSON."""
         except Exception as e2:
             return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
     except BadRequestError as e:
-        # Erreur CÔTÉ GROQ (code json_validate_failed), distincte d'un
-        # json.JSONDecodeError local : ici le décodage contraint échoue avant
-        # même de renvoyer une réponse exploitable (bug connu de Groq sur le
-        # mode JSON strict pour gpt-oss-20b, surtout sur les prompts volumineux
-        # comme celui-ci — tous les faits + les 17 thèmes). Sans ce bloc,
-        # l'erreur tombait directement dans le handler générique ci-dessous
-        # sans aucune nouvelle tentative.
         body = getattr(e, "body", None)
         code = body.get("code") if isinstance(body, dict) else None
-        # failed_generation est vide côté Groq (peu exploitable) : on logue
-        # tout ce qu'on peut récupérer côté client pour diagnostiquer une
-        # récidive malgré le passage en strict mode.
         raw_resp_text = None
         try:
             raw_resp_text = e.response.text
@@ -1030,22 +1027,26 @@ Réponds en JSON."""
         log_event("memory_consolidation_json_validate_debug",
                    f"status={getattr(e, 'status_code', '?')} body={body!r} response_text={raw_resp_text!r}")
         if code == "json_validate_failed" or "json_validate_failed" in str(e):
-            try:
-                log_event("memory_consolidation_json_validate_retry",
-                           f"Échec décodage contraint côté Groq ({e}), nouvelle tentative")
-                consolidated = _call_llm("\n\nRappel : réponds avec un JSON valide et complet, sans troncature.")
-                if not isinstance(consolidated, dict):
-                    return {"avant": n_avant, "apres": n_avant,
-                            "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
-            except Exception as e2:
-                return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
+            consolidated = _recover_failed_generation(body)
+            if consolidated is not None:
+                log_event("memory_consolidation_recovered",
+                           f"JSON récupéré depuis failed_generation ({len(consolidated)} clés)")
+            else:
+                try:
+                    log_event("memory_consolidation_json_validate_retry",
+                               f"Échec décodage contraint côté Groq ({e}), nouvelle tentative")
+                    consolidated = _call_llm(
+                        "\n\nRappel : réponds avec un JSON valide et complet, sans troncature. "
+                        "Le JSON doit contenir TOUTES ces clés, sans exception, avec null "
+                        "pour un thème sans fait : " + ", ".join(themes_keys) + ".")
+                    if not isinstance(consolidated, dict):
+                        return {"avant": n_avant, "apres": n_avant,
+                                "erreur": f"JSON renvoyé n'est pas un objet (type={type(consolidated).__name__})"}
+                except Exception as e2:
+                    return {"avant": n_avant, "apres": n_avant, "erreur": str(e2)}
         else:
             return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
     except RateLimitError as e:
-        # Quota TPM/minute atteint : Groq indique lui-même le délai avant reset
-        # ("try again in 24.3s") — on l'exploite pour un retry automatique plutôt
-        # que de faire dépendre la réussite du /compact d'un changement manuel de
-        # modèle (qui n'a aucun effet ici : ce modèle est fixe, voir plus haut).
         err = str(e)
         delay = _retry_delay_seconds(err)
         if delay is None:
@@ -1066,10 +1067,17 @@ Réponds en JSON."""
     except Exception as e:
         return {"avant": n_avant, "apres": n_avant, "erreur": str(e)}
 
+    # Clés "required" omises par le modèle (thème sans fait) : on les complète
+    # par null plutôt que de faire échouer tout le /compact.
+    missing_keys = [k for k in themes_keys if k not in consolidated]
+    if missing_keys:
+        log_event("memory_consolidation_missing_keys",
+                   f"Clés absentes complétées par null : {missing_keys}")
+        for k in missing_keys:
+            consolidated[k] = None
+
     # Filet de sécurité : si, malgré le prompt renforcé et la tentative de
-    # secours, une valeur est encore un objet/liste, on la convertit en texte
-    # lisible plutôt que d'exposer une représentation Python brute (le bug
-    # observé le 14/07 : "{'libellé': 'Profil utilisateur', 'mots-clés': ...}").
+    # secours, une valeur est encore un objet/liste, on la convertit en texte lisible.
     still_bad = _shape_errors(consolidated)
     if still_bad:
         log_event("memory_consolidation_shape_fallback",
@@ -1115,6 +1123,18 @@ Réponds en JSON."""
             })
 
     if new_mem:
+        # La consolidation REMPLACE toute la mémoire longue : sauvegarde
+        # horodatée préalable (on garde les 5 dernières) pour pouvoir
+        # récupérer un fait qu'un thème omis ou mal résumé aurait fait perdre.
+        try:
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            shutil.copy2(LONG_MEM_FILE,
+                         LONG_MEM_FILE.parent / f"{LONG_MEM_FILE.name}.bak-{ts}")
+            baks = sorted(LONG_MEM_FILE.parent.glob(f"{LONG_MEM_FILE.name}.bak-*"))
+            for old_bak in baks[:-5]:
+                old_bak.unlink(missing_ok=True)
+        except Exception as e_bak:
+            log_event("memory_consolidation_backup_failed", str(e_bak))
         save_long_memory(new_mem)
         global _long_mem_cache
         _long_mem_cache = None
@@ -1651,9 +1671,8 @@ def execute_tool(tool: str, args: str) -> str:
             proc.start()
             proc.join(timeout=2)
             if proc.is_alive():
-                # Contrairement à un thread, un Process peut être réellement
-                # arrêté — pas de calcul fantôme qui continue de consommer
-                # CPU/RAM en arrière-plan après le timeout.
+                # Contrairement à un thread, un Process peut être réellement arrêté
+                # pas de calcul fantôme qui continue de consommer CPU/RAM en arrière-plan après le timeout.
                 proc.terminate()
                 proc.join(timeout=1)
                 if proc.is_alive():
@@ -1672,8 +1691,8 @@ def execute_tool(tool: str, args: str) -> str:
         if not args:
             return "❌ Usage : /tool shell <commande>"
         # "python3" volontairement absent : shell = diagnostic en lecture seule
-        # uniquement. Tout lancement de programme passe exclusivement par
-        # /tool run (liste blanche LAUNCHABLE_SCRIPTS, validation stricte des
+        # uniquement. Tout lancement de programme passe exclusivement par /tool run 
+        # (liste blanche LAUNCHABLE_SCRIPTS, validation stricte des
         # arguments, exécution en arrière-plan avec timeout adapté).
         allowed_cmds = {"df", "free", "uptime", "uname", "ls", "pwd",
                         "date", "cat", "echo", "hostname", "whoami",
@@ -1829,8 +1848,8 @@ def execute_tool(tool: str, args: str) -> str:
             return "❌ Contenu trop volumineux (max 200 000 caractères)"
         # Validation structurelle : load_skills_index() avale silencieusement
         # (except: pass) tout fichier au frontmatter invalide -- un skill mal
-        # formé écrit ici resterait un fichier fantôme, jamais routé. On
-        # préfère un refus explicite et immédiat.
+        # formé écrit ici resterait un fichier fantôme, jamais routé. 
+        # On préfère un refus explicite et immédiat.
         match = re.match(r'^---\n(.*?)\n---', contenu, re.DOTALL)
         if not match:
             return ("❌ Frontmatter YAML manquant — un skill doit commencer par :\n"
@@ -1861,8 +1880,7 @@ def execute_tool(tool: str, args: str) -> str:
             return "❌ Mot-clé trop long (max 100 caractères)"
         try:
             # relit depuis le disque plutôt que d'utiliser le cache MEMORY_THEMES
-            # en mémoire, pour ne pas écraser une édition manuelle faite
-            # entretemps directement dans themes.yaml.
+            # en mémoire, pour ne pas écraser une édition manuelle faite entretemps directement dans themes.yaml.
             themes = _load_memory_themes()
 
             theme_key = theme_in if theme_in in themes else None
@@ -1997,16 +2015,15 @@ def execute_tool(tool: str, args: str) -> str:
 #
 # En Génération 1, le modèle ne fait qu'ÉCRIRE "/tool write ..." en texte ;
 # c'est l'utilisateur qui doit taper la commande pour qu'elle s'exécute.
-# Ici, le modèle reçoit les outils via l'API function-calling (compatible
-# OpenAI) et peut les appeler directement. execute_tool(), preview_tool_action()
-# et tool_call_needs_confirmation() ne changent PAS : on les réutilise tels
-# quels, on construit juste (tool_réel, args_string) à partir de l'appel JSON
+# Ici, le modèle reçoit les outils via l'API function-calling (compatible OpenAI) 
+# et peut les appeler directement. execute_tool(), preview_tool_action()
+# et tool_call_needs_confirmation() ne changent PAS : on les réutilise tels quels, 
+# on construit juste (tool_réel, args_string) à partir de l'appel JSON
 # structuré du modèle. "cron" est éclaté en 3 outils (cron_list/add/remove)
 # "cron" est éclaté en 3 outils (cron_list/add/remove) côté schéma car les
 # LLM gèrent bien mieux des paramètres nommés qu'une sous-commande encodée
-# dans une chaîne libre. "run" (lancement de script autonome, voir
-# LAUNCHABLE_SCRIPTS) suit le même principe : paramètres nommés (script,
-# live, since_days) plutôt qu'une chaîne d'arguments brute.
+# dans une chaîne libre. "run" (lancement de script autonome, voir LAUNCHABLE_SCRIPTS) 
+# suit le même principe : paramètres nommés (script,live, since_days) plutôt qu'une chaîne d'arguments brute.
 
 TOOL_SCHEMA_SPEC = {
     "date":              {"desc": "Affiche la date et l'heure actuelles.", "params": []},
@@ -2586,11 +2603,16 @@ def call_groq(system_prompt: str, history: list, user_message: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def reflect_on_response(user_msg: str, response: str) -> str:
+    long_mem = format_long_memory_for_prompt(max_facts=8)
+    mem_block = (f"\nFAITS CONNUS SUR L'UTILISATEUR (font foi, même s'ils contredisent "
+                 f"tes connaissances générales) :\n{long_mem}\n" if long_mem else "")
     prompt = f"""Tu viens de donner cette réponse :
 QUESTION : {user_msg}
 RÉPONSE : {response}
+{mem_block}
 Évalue en interne sur 3 critères (précision, complétude, utilité).
 N'affiche PAS ton évaluation ni tes scores.
+Ne remplace JAMAIS un fait personnel de l'utilisateur ci-dessus par une information générale.
 Si la réponse est satisfaisante, réponds exactement : OK
 Sinon, donne UNIQUEMENT la version améliorée, sans introduction ni commentaire."""
     try:
@@ -2631,6 +2653,31 @@ Sinon, donne UNIQUEMENT la version améliorée, sans introduction ni commentaire
 # File d'attente des skills détectés automatiquement (thread → main loop)
 _pending_skill: dict | None = None
 _pending_skill_lock = threading.Lock()
+
+# Repère les tokens ressemblant à un identifiant de modèle Groq (vendor/nom,
+# ou formes historiques sans "/" type "mixtral-8x7b-32768") pour détecter,
+# de façon déterministe et sans appel LLM, un skill autonome qui cite un
+# modèle absent de GROQ_MODELS -- déprécié ou tout simplement halluciné,
+# plutôt qu'ancré dans la config réelle de l'agent (cf. incident sept. 2026 :
+# skill "mise en cache Groq" citant mixtral-8x7b-instruct-v0.1, llama-3-8b-
+# instruct, gemma-2-9b-instruct, tous absents de GROQ_MODELS).
+_MODEL_REF_RE = re.compile(
+    r'\b(?:openai/[\w.\-]+|qwen/[\w.\-]+|meta-llama/[\w.\-]+'
+    r'|groq/[\w.\-]+|mixtral[\w.\-]*|llama-\d[\w.\-]*|gemma[\w.\-]*)\b',
+    re.IGNORECASE,
+)
+
+def _check_stale_model_refs(content: str) -> list[str]:
+    """Retourne les tokens de type identifiant-de-modèle présents dans `content`
+    qui ne correspondent à aucune entrée de GROQ_MODELS. Fail-open par nature :
+    ne peut que signaler des faux positifs improbables (un tiret+chiffre
+    accidentel), jamais rater un vrai modèle valide -- valides = liste exacte,
+    comparaison insensible à la casse."""
+    valides = {m[0].lower() for m in GROQ_MODELS.values()}
+    return sorted({
+        tok for tok in _MODEL_REF_RE.findall(content)
+        if tok.lower().rstrip('.,;:)') not in valides
+    })
 
 def _llm_score_skill_quality(name: str, description: str, content: str) -> float:
     """Second regard automatique sur un skill candidat, sur le même principe que
@@ -2747,8 +2794,8 @@ Si OUI : {{"create": true, "name": "nom_snake_case", "description": "description
             return
         if _skill_already_exists(name, desc, skills_index):
             return
-        # Dédoublonnage sémantique en complément du Jaccard ci-dessus (capte les
-        # reformulations : même skill décrit avec des mots différents).
+        # Dédoublonnage sémantique en complément du Jaccard ci-dessus (capte les reformulations
+        # : même skill décrit avec des mots différents).
         similar_name, _ = _find_similar_skill(f"{name}: {desc} {str(result.get('content', ''))[:500]}")
         if similar_name:
             return
@@ -2830,6 +2877,18 @@ def guarded_save_skill(name: str, description: str, triggers: list,
                        f"— condense-le à l'essentiel, un skill trop détaillé sera de toute "
                        f"façon tronqué à l'injection")
 
+    # Second garde-fou déterministe (avant les appels LLM) : un skill qui cite
+    # un modèle absent de GROQ_MODELS est soit périmé, soit non-ancré dans la
+    # config réelle -- dans les deux cas, à corriger avant écriture plutôt
+    # qu'après relecture humaine.
+    stale_models = _check_stale_model_refs(content)
+    if stale_models:
+        log_event("skill_stale_model_rejected",
+                  f"'{name}' — références absentes de GROQ_MODELS : {', '.join(stale_models)}")
+        return None, (f"cite un/des modèle(s) absent(s) de GROQ_MODELS "
+                       f"({', '.join(stale_models)}) — vérifie qu'il ne s'agit pas d'un "
+                       f"modèle déprécié ou halluciné avant d'écrire ce skill")
+
     similar_name, sim_score = _find_similar_skill(f"{name}: {description} {content[:500]}")
     if similar_name and similar_name != safe_name:
         log_event("skill_deduped", f"'{name}' ~ '{similar_name}' (score={sim_score:.2f})")
@@ -2910,7 +2969,7 @@ def print_banner(nb_skills: int, nb_history: int):
     text.append("Température : ", style="bold yellow"); text.append(f"{TEMPERATURE}   ",     style="white")
     text.append("max_tokens : ",  style="bold yellow"); text.append(f"{MAX_TOKENS}   ",      style="white")
     text.append("max_history : ", style="bold yellow"); text.append(f"{MAX_HISTORY}\n",      style="white")
-    text.append("/help ", style="bold cyan");           text.append("pour les commandes",    style="white")
+    text.append("/help ",         style="bold cyan");   text.append("pour les commandes",    style="white")
     console.print(Panel(text, title=f"[bold cyan]— Agent IA Groq & Skills — {AGENT_VERSION} —[/]",
                         border_style="cyan", padding=(0, 2)))
     mem  = load_long_memory()
@@ -3612,7 +3671,7 @@ def main():
             skills_index = handle_command(user_input, skills_index) or skills_index
             continue
 
-        # ── Skill auto-détecté au tour précédent ? ────────────────────────────
+        # ── Skill auto-détecté au tour précédent ? ──
         # On le propose ici, avant de traiter le nouveau message, 
         # pour ne pas interrompre le flux de la réponse en cours.
         with _pending_skill_lock:
@@ -3723,7 +3782,7 @@ def main():
 
         _BACKGROUND_EXECUTOR.submit(extract_and_store_facts, user_input, response)
 
-        # Détection proactive de skill en arrière-plan (llama 8B, ~1s)
+        # Détection proactive de skill en arrière-plan
         _BACKGROUND_EXECUTOR.submit(detect_skill_opportunity,
                                     user_input, response, list(skills_index))
 
