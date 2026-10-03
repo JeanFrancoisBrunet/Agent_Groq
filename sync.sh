@@ -1,5 +1,4 @@
 #!/bin/bash
- 
 cd "$(dirname "$0")" || exit 1
  
 git add .
@@ -12,4 +11,4 @@ fi
 git commit -m "${1:-mise à jour}"
 git push
  
-echo "✅ Synchronisation terminée"
+echo "Synchronisation terminée"
