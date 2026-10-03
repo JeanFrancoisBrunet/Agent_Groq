@@ -1,0 +1,11 @@
+Dans le système de skills, les mots‑clés fonctionnent comme des correspondances textuelles strictes. 
+Le premier skill de la liste dont un mot‑clé apparaît dans un message est automatiquement sélectionné — sans score, 
+sans pondération, uniquement selon l’ordre dans skills_index.
+
+Conséquence : si deux skills partagent un même mot‑clé (par exemple « montre »), seul celui placé en premier sera 
+déclenché. Le second ne pourra jamais être activé par mot‑clé ; il ne s’activera qu’en repli via la recherche 
+vectorielle, et uniquement si le score dépasse 0.55.
+
+Ainsi, il est essentiel d’éviter les mots‑clés trop génériques ou susceptibles d’être communs à plusieurs skills. 
+Chaque skill doit disposer de triggers spécifiques, clairement distinctifs, pour garantir un déclenchement fiable 
+et cohérent.

@@ -1,0 +1,802 @@
+[
+  {
+    "message_id": "<NMFFDAfcf6f188-e198-445f-ac0f-34c3ba501b350092DF76lnkd_mid_prod3@em.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-27T09:00:36+00:00"
+  },
+  {
+    "message_id": "<PR0P264MB239196A56BAAEC0A63B3B8ADD3AD2@PR0P264MB2391.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Consulting/AQM",
+    "action": "classé via groq → Consulting/AQM + brouillon créé (à valider)",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:11+00:00"
+  },
+  {
+    "message_id": "<MR1PPF372BDF5976F82183A9FF912E9E71787AD2@MR1PPF372BDF597.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Universités/EnsiCaen IT2I",
+    "action": "classé via règle → Universités/EnsiCaen IT2I",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:12+00:00"
+  },
+  {
+    "message_id": "<ToaY_evg7sLMIRlTQiI8Yw@notifications.google.com>",
+    "account": "gmail",
+    "folder": "À trier",
+    "action": "classé via groq → À trier (Gmail → Outlook, Gmail vidé)",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:14+00:00"
+  },
+  {
+    "message_id": "<202627080914.32otucrbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:14+00:00"
+  },
+  {
+    "message_id": "<1327867515.6036944.1787833937631.JavaMail.zimbra@unicaen.fr>",
+    "account": "orange",
+    "folder": "IAE Caen Alumni",
+    "action": "classé via règle → IAE Caen Alumni",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:14+00:00"
+  },
+  {
+    "message_id": "<2021006616.550436.1787838011066@ltx1-app96110.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-27T17:00:15+00:00"
+  },
+  {
+    "message_id": "<D6B35781669AE8C0AC0345B3AEFE5145E4079505BO4E442@S4410683>",
+    "account": "orange",
+    "folder": "Ameli - Santé/Mutuelle/CPMS",
+    "action": "classé via règle → Ameli - Santé/Mutuelle/CPMS",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:15+00:00"
+  },
+  {
+    "message_id": "<1291483343.4038735.1787840085969@ltx1-app94623.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-27T17:00:15+00:00"
+  },
+  {
+    "message_id": "<NM62800A54A189D5EC0APECprod@diffusion.apec.fr>",
+    "account": "orange",
+    "folder": "Emploi/APEC",
+    "action": "classé via règle → Emploi/APEC",
+    "is_spam": false,
+    "ts": "2026-08-27T17:00:15+00:00"
+  },
+  {
+    "message_id": "<1002151800.444596.1787858033751@ltx1-app39445.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-28T09:00:08+00:00"
+  },
+  {
+    "message_id": "<1829797784.672651411.1787859042946@pnmpgsa001.pnma>",
+    "account": "orange",
+    "folder": "Impôts",
+    "action": "classé via règle → Impôts",
+    "is_spam": false,
+    "ts": "2026-08-28T09:00:08+00:00"
+  },
+  {
+    "message_id": "<1928399384.1621208.1787874011535@ltx1-app99433.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-28T09:00:08+00:00"
+  },
+  {
+    "message_id": "<73533be4-4cb7-41a2-b4bf-9c803cd1c6bd@info.ameli.fr>",
+    "account": "orange",
+    "folder": "Ameli - Santé",
+    "action": "classé via règle → Ameli - Santé",
+    "is_spam": false,
+    "ts": "2026-08-28T09:00:08+00:00"
+  },
+  {
+    "message_id": "<202628080436.32q8esrbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-08-28T09:00:09+00:00"
+  },
+  {
+    "message_id": "<1999625262.25235615.1787897229161@otppusa003.otpp>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-08-28T09:00:10+00:00"
+  },
+  {
+    "message_id": "<202628080804.a271ahe74ydrj@shared-p100-i7.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-08-28T09:00:10+00:00"
+  },
+  {
+    "message_id": "<5fbc6f76-306d4425-1787925348-215561133424818-2082980@outbound-eu.intercom.mail.tiime.fr>",
+    "account": "outlook",
+    "folder": "JFB Conseils/Tiime",
+    "action": "classé via règle → JFB Conseils/Tiime",
+    "is_spam": false,
+    "ts": "2026-08-28T17:00:12+00:00"
+  },
+  {
+    "message_id": "<202608281403.67SE3fPD2413075@mail.axtep>",
+    "account": "gmail",
+    "folder": "Raspberry Pi5/FlightAware",
+    "action": "classé via règle → Raspberry Pi5/FlightAware (Gmail → Outlook, Gmail vidé)",
+    "is_spam": false,
+    "ts": "2026-08-28T17:00:17+00:00"
+  },
+  {
+    "message_id": "<1715069303.3637259.1787915685575@ltx1-app94783.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-28T17:00:18+00:00"
+  },
+  {
+    "message_id": "<726563354.4651577.1787926484039@ltx1-app52072.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-28T17:00:18+00:00"
+  },
+  {
+    "message_id": "<9BB9460E-7B47-42CA-BFCE-169B0268D4E9@free.fr>",
+    "account": "orange",
+    "folder": "IAE Caen Alumni",
+    "action": "classé via règle → IAE Caen Alumni",
+    "is_spam": false,
+    "ts": "2026-08-28T17:00:18+00:00"
+  },
+  {
+    "message_id": "<PR0P264MB2391F0EEE9051E373882E2B7D3AB2@PR0P264MB2391.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "IMV Technologies",
+    "action": "classé via groq → IMV Technologies",
+    "is_spam": false,
+    "ts": "2026-08-29T09:00:16+00:00"
+  },
+  {
+    "message_id": "<202629080542.32rmz8rbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-08-29T09:00:16+00:00"
+  },
+  {
+    "message_id": "<1401116893.9501105.1788003613181@ltx1-app159689.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-29T17:00:06+00:00"
+  },
+  {
+    "message_id": "<1910410036.9964790.1788012883962@ltx1-app69999.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-29T17:00:06+00:00"
+  },
+  {
+    "message_id": "<394809333.13123785.1788032411862@lva2-app63298.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-30T09:00:07+00:00"
+  },
+  {
+    "message_id": "<202630080501.32t1jorbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-08-30T09:00:08+00:00"
+  },
+  {
+    "message_id": "<483584489.13601080.1788075613097@lva2-app62438.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-30T09:00:08+00:00"
+  },
+  {
+    "message_id": "<1018495415.13425584.1788090013719@ltx1-app65821.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-30T17:00:06+00:00"
+  },
+  {
+    "message_id": "<1150778256.903101.1788163454491@marketo-platform--email-sender-prod-batch-cluster-5bf89bbbzwkjk>",
+    "account": "outlook",
+    "folder": "Microsoft",
+    "action": "classé via règle → Microsoft",
+    "is_spam": false,
+    "ts": "2026-08-31T09:00:09+00:00"
+  },
+  {
+    "message_id": "<CAM_uFysf=RTSPJdXmPmjR-i5kBhsHgw4B1YOZMba+BR1pNmJqg@mail.gmail.com>",
+    "account": "outlook",
+    "folder": "Raspberry Pi5",
+    "action": "classé via groq → Raspberry Pi5 + brouillon créé (à valider)",
+    "is_spam": false,
+    "ts": "2026-08-31T09:00:12+00:00"
+  },
+  {
+    "message_id": "<1289933137.15395321.1788140413604@ltx1-app0365.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-08-31T09:00:12+00:00"
+  },
+  {
+    "message_id": "<NM628045C2D18A1A260APECprod@diffusion.apec.fr>",
+    "account": "orange",
+    "folder": "Emploi/APEC",
+    "action": "classé via règle → Emploi/APEC",
+    "is_spam": false,
+    "ts": "2026-08-31T09:00:12+00:00"
+  },
+  {
+    "message_id": "<202631080501.32ug44rbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-08-31T09:00:13+00:00"
+  },
+  {
+    "message_id": "<858820324.2994.1788163352598@marketo-platform--email-sender-prod-batch-cluster-5bf89bbbzzxx4>",
+    "account": "orange",
+    "folder": "Microsoft-McAfee",
+    "action": "classé via règle → Microsoft-McAfee",
+    "is_spam": false,
+    "ts": "2026-08-31T09:00:13+00:00"
+  },
+  {
+    "message_id": "<9b710255-1a10d86e-1788282405-215561137778149-2082980@outbound-eu.intercom.mail.tiime.fr>",
+    "account": "outlook",
+    "folder": "JFB Conseils/Tiime",
+    "action": "classé via règle → JFB Conseils/Tiime",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:15+00:00"
+  },
+  {
+    "message_id": "<PARP264MB6866F9FC953393BD42B56DA8F9A82@PARP264MB6866.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Universités/EnsiCaen IT2I",
+    "action": "classé via règle → Universités/EnsiCaen IT2I",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:16+00:00"
+  },
+  {
+    "message_id": "<PARP264MB69454E91160D4E057EC56B80C5A82@PARP264MB6945.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Universités/Dauphine Paris",
+    "action": "classé via règle → Universités/Dauphine Paris",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:17+00:00"
+  },
+  {
+    "message_id": "<20260901060310.3.6d7058dfbbf144b7@mg-d0.substack.com>",
+    "account": "outlook",
+    "folder": "Consulting/Christophe Ordano",
+    "action": "classé via groq → Consulting/Christophe Ordano",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:19+00:00"
+  },
+  {
+    "message_id": "<a98ce7903fa1412ace141fa11.ca5b2a2685.20260831152602.933355606c.1b8d4083@mail39.sea31.mcsv.net>",
+    "account": "outlook",
+    "folder": "Consulting/Apilean",
+    "action": "classé via groq → Consulting/Apilean",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:20+00:00"
+  },
+  {
+    "message_id": "<PR0P264MB2391971E3BA74BE742E0F976D3A92@PR0P264MB2391.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "IMV Technologies",
+    "action": "classé via groq → IMV Technologies + brouillon créé (à valider)",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:25+00:00"
+  },
+  {
+    "message_id": "<PARP264MB6945F2701C8B1B63F1AF4DFBC5A92@PARP264MB6945.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Universités/Dauphine Paris",
+    "action": "classé via règle → Universités/Dauphine Paris",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:26+00:00"
+  },
+  {
+    "message_id": "<PR0P264MB2391E1F0B01BD6FF65ADEC2ED3A92@PR0P264MB2391.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "IMV Technologies",
+    "action": "classé via groq → IMV Technologies + brouillon créé (à valider)",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:39+00:00"
+  },
+  {
+    "message_id": "<4hYKGr6KYcz2Xvrg@cur-ali-srnm-smtp-mut-2.serenamail.eu>",
+    "account": "outlook",
+    "folder": "Universités/EnsiCaen IT2I",
+    "action": "classé via règle → Universités/EnsiCaen IT2I",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:39+00:00"
+  },
+  {
+    "message_id": "<c1918af5e8751c943f6febfb6876e842324d1f90-20366030-111888306@google.com>",
+    "account": "gmail",
+    "folder": "À trier",
+    "action": "classé via groq → À trier (Gmail → Outlook, Gmail vidé)",
+    "is_spam": false,
+    "ts": "2026-09-02T09:00:47+00:00"
+  },
+  {
+    "message_id": "<1788284134528.bdb24bf3-f752-4fb4-9044-b7b8e6e85866@44341333t.groq.co>",
+    "account": "gmail",
+    "folder": "IMV Technologies/Insights Discovery",
+    "action": "classé via groq → IMV Technologies/Insights Discovery (Gmail → Outlook, Gmail vidé)",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:02+00:00"
+  },
+  {
+    "message_id": "<82057f2472fff9c8415982833adbba9c469fbe2071398352f9cfd28d4df1e899@edenredplus.com>",
+    "account": "orange",
+    "folder": "Ticket Restaurant",
+    "action": "classé via règle → Ticket Restaurant",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:03+00:00"
+  },
+  {
+    "message_id": "<202601090503.32vuokrbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:03+00:00"
+  },
+  {
+    "message_id": "<2037066325.22523740.1788254085281@ltx1-app24132.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-02T09:01:03+00:00"
+  },
+  {
+    "message_id": "<56673601.7725899.1788256171441.JavaMail.zimbra@unicaen.fr>",
+    "account": "orange",
+    "folder": "IAE Caen Alumni",
+    "action": "classé via règle → IAE Caen Alumni",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:03+00:00"
+  },
+  {
+    "message_id": "<CACNxF5S9W_U4je2gJ0k5sL5wciMoKO0BLcq-yEF7yiM-5osOnQ@mail.gmail.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:07+00:00"
+  },
+  {
+    "message_id": "<NM6282C86D218A1FBADAPECprod@diffusion.apec.fr>",
+    "account": "orange",
+    "folder": "Emploi/APEC",
+    "action": "classé via règle → Emploi/APEC",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:07+00:00"
+  },
+  {
+    "message_id": "<1971764162.1146277.1788260990516@bs-publishmsg-v4-bf699f4d9-vgdls>",
+    "account": "orange",
+    "folder": "Banques/Bred",
+    "action": "classé via règle → Banques/Bred",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:07+00:00"
+  },
+  {
+    "message_id": "<1179080902.23175468.1788262814501@ltx1-app89037.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-02T09:01:07+00:00"
+  },
+  {
+    "message_id": " <PR1P264MB180581CD7C601F935C494F80F4A82@PR1P264MB1805.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "orange",
+    "folder": "IAE Caen Alumni",
+    "action": "classé via règle → IAE Caen Alumni",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:08+00:00"
+  },
+  {
+    "message_id": "<d19ea32c.EAAACTMPD0kAAAAAAAAAAwmkvaYAAYCvB3MAAAAAACmsWwBqlvUa@mailjet.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:27+00:00"
+  },
+  {
+    "message_id": "<202602090529.3302dwrbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:28+00:00"
+  },
+  {
+    "message_id": "<122546205.3911915.1788333956249@ltx1-app23960.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-02T09:01:28+00:00"
+  },
+  {
+    "message_id": "<20260902084046.58C6A90E@ip-10-128-176-132.eu-west-3.compute.internal>",
+    "account": "orange",
+    "folder": "Studio Aigle/Agence Immo Guy Hoquet",
+    "action": "classé via règle → Studio Aigle/Agence Immo Guy Hoquet",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:28+00:00"
+  },
+  {
+    "message_id": "<20260902084501.AD70B60915@ip-10-128-199-10.eu-west-3.compute.internal>",
+    "account": "orange",
+    "folder": "Studio Aigle/Agence Immo Guy Hoquet",
+    "action": "classé via règle → Studio Aigle/Agence Immo Guy Hoquet",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:28+00:00"
+  },
+  {
+    "message_id": "<5607d502d59c474d8ecfd6327e71bc9b@2837020>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-02T09:01:43+00:00"
+  },
+  {
+    "message_id": "<234557036.8553251.1788366455076.JavaMail.zimbra@unicaen.fr>",
+    "account": "outlook",
+    "folder": "Universités/Campus 2",
+    "action": "classé via règle → Universités/Campus 2",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:07+00:00"
+  },
+  {
+    "message_id": "<PR0P264MB2535237BF263A9E7B002F09883B72@PR0P264MB2535.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Statistiques/Minitab",
+    "action": "classé via groq → Statistiques/Minitab",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:09+00:00"
+  },
+  {
+    "message_id": "<1627615997.4490368.1788347683418@ltx1-app68951.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-02T17:00:09+00:00"
+  },
+  {
+    "message_id": "<220469481.1056787.1788349774632@bs-publishmsg-v4-bf699f4d9-88v5v>",
+    "account": "orange",
+    "folder": "Banques/Bred",
+    "action": "classé via règle → Banques/Bred",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:09+00:00"
+  },
+  {
+    "message_id": "<19c19745-3d84-4398-839d-ed72a5e0f6f6@info.ameli.fr>",
+    "account": "orange",
+    "folder": "Ameli - Santé",
+    "action": "classé via règle → Ameli - Santé",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:09+00:00"
+  },
+  {
+    "message_id": "<907772374.5448414.1788351418721.JavaMail.zimbra@unicaen.fr>",
+    "account": "orange",
+    "folder": "IAE Caen Alumni",
+    "action": "classé via règle → IAE Caen Alumni",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:09+00:00"
+  },
+  {
+    "message_id": "<p9ure7rproi9h2pw866fqhpm50pg0frhgwe2g@kit-mail3.com>",
+    "account": "orange",
+    "folder": "Emploi",
+    "action": "classé via groq → Emploi + brouillon créé (à valider)",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:11+00:00"
+  },
+  {
+    "message_id": "<010201a062d6abde-389c3258-87b6-4ce4-9b00-c3d45372f399-000000@eu-west-1.amazonses.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-02T17:00:13+00:00"
+  },
+  {
+    "message_id": "<2136191799.17345.1788391038670@no2fyq26>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-03T01:00:09+00:00"
+  },
+  {
+    "message_id": "<PR0P264MB2391A0153A6F3D074630AD52D3B62@PR0P264MB2391.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "IMV Technologies",
+    "action": "classé via groq → IMV Technologies",
+    "is_spam": false,
+    "ts": "2026-09-03T09:00:11+00:00"
+  },
+  {
+    "message_id": "<PATP264MB6767EB768A190FFE5ED85FBBB6B62@PATP264MB6767.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Statistiques/Minitab",
+    "action": "classé via groq → Statistiques/Minitab",
+    "is_spam": false,
+    "ts": "2026-09-03T09:00:13+00:00"
+  },
+  {
+    "message_id": "<PA0P264MB68720511AF4500FA26CCECB6F9B62@PA0P264MB6872.FRAP264.PROD.OUTLOOK.COM>",
+    "account": "outlook",
+    "folder": "Universités/EnsiCaen IT2I",
+    "action": "classé via règle → Universités/EnsiCaen IT2I",
+    "is_spam": false,
+    "ts": "2026-09-03T09:00:13+00:00"
+  },
+  {
+    "message_id": "<getresponse.xserial.s56bV2zXoGpPyvyoF7XUBfIgQR+Rt8tlA2XggPQmToFME8SV30kfrVVm28WB781p/LTGvbWNl+WYsN7MOYiA9XrdiFl+jMfhunKx0Cwnt4ey5hFggrpi8RFVIH4ODgr6X+GCShy/PMzfEq6fcKsvFnbB52Q2A0rYr+J5ACYALfQJdx0=@gr-mail6.com>",
+    "account": "outlook",
+    "folder": "Statistiques/Ellistat",
+    "action": "classé via règle → Statistiques/Ellistat",
+    "is_spam": false,
+    "ts": "2026-09-03T09:00:14+00:00"
+  },
+  {
+    "message_id": "<202603090557.331gycrbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-09-03T09:00:14+00:00"
+  },
+  {
+    "message_id": "<006c01dd3b6e$e5943680$b0bca380$@gmail.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-03T09:00:16+00:00"
+  },
+  {
+    "message_id": "<114723478.2935136.1788421213502@ltx1-app64812.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-03T09:00:16+00:00"
+  },
+  {
+    "message_id": "<NMFFDAa54cfa55-3b0c-411f-b9e4-525ebe8992a40092F8E4lnkd_mid_prod3@em.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-03T09:00:16+00:00"
+  },
+  {
+    "message_id": "<888223577.9133755.1788440173202.JavaMail.zimbra@unicaen.fr>",
+    "account": "outlook",
+    "folder": "Universités/EnsiCaen IT2I",
+    "action": "classé via groq → Universités/EnsiCaen IT2I + brouillon créé (à valider)",
+    "is_spam": false,
+    "ts": "2026-09-03T17:00:57+00:00"
+  },
+  {
+    "message_id": "<NM6283619FE18A0808AAPECprod@diffusion.apec.fr>",
+    "account": "orange",
+    "folder": "Emploi/APEC",
+    "action": "classé via règle → Emploi/APEC",
+    "is_spam": false,
+    "ts": "2026-09-03T17:00:57+00:00"
+  },
+  {
+    "message_id": "<NMFFDA90a84d48-2dfa-4daa-8807-fb426734c151006BF18Flnkd_mid_prod2@em.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-03T17:00:57+00:00"
+  },
+  {
+    "message_id": "<cf4cd25c-109c-5dbf-1edc-1502e823b8fa@orange.fr>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-03T17:00:58+00:00"
+  },
+  {
+    "message_id": "<010701a0693984c4-ea72e1b7-8249-471d-b9d2-312c0c39786f-000000@eu-central-1.amazonses.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-04T01:00:07+00:00"
+  },
+  {
+    "message_id": "<010201a06a85c3b2-35cfa038-3663-4469-9c05-36f4b108f518-000000@eu-west-1.amazonses.com>",
+    "account": "outlook",
+    "folder": "Institut Lean France/Newsletter",
+    "action": "classé via règle → Institut Lean France/Newsletter",
+    "is_spam": false,
+    "ts": "2026-09-04T09:00:06+00:00"
+  },
+  {
+    "message_id": "<202604090807.bw7q6he74ydrj@shared-p100-i21.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-04T09:00:07+00:00"
+  },
+  {
+    "message_id": "<010201a06d1c46bc-32d3e7a2-e842-494a-a867-e3aa1d65885b-000000@eu-west-1.amazonses.com>",
+    "account": "outlook",
+    "folder": "Institut Lean France/Newsletter",
+    "action": "classé via règle → Institut Lean France/Newsletter",
+    "is_spam": false,
+    "ts": "2026-09-04T17:00:12+00:00"
+  },
+  {
+    "message_id": "<202604091012.1cat0yesec1s3j@mail.francequalite.fr>",
+    "account": "outlook",
+    "folder": "Consulting/AQM/Bonnes Pratiques",
+    "action": "classé via groq → Consulting/AQM/Bonnes Pratiques",
+    "is_spam": false,
+    "ts": "2026-09-04T17:00:14+00:00"
+  },
+  {
+    "message_id": "<202609041330.684DUEwV3153543@mail.axtep>",
+    "account": "gmail",
+    "folder": "Raspberry Pi5/FlightAware",
+    "action": "classé via règle → Raspberry Pi5/FlightAware (Gmail → Outlook, Gmail vidé)",
+    "is_spam": false,
+    "ts": "2026-09-04T17:00:18+00:00"
+  },
+  {
+    "message_id": "<608625224.3779779.1788520484632@lva2-app66403.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-04T17:00:18+00:00"
+  },
+  {
+    "message_id": "<49CFF472DB156C814992BD21D12DD234C4A1AE20BO74171@S4410683>",
+    "account": "orange",
+    "folder": "Ameli - Santé/Mutuelle/CPMS",
+    "action": "classé via règle → Ameli - Santé/Mutuelle/CPMS",
+    "is_spam": false,
+    "ts": "2026-09-04T17:00:18+00:00"
+  },
+  {
+    "message_id": "<2076692578.9730711.1788525896259.JavaMail.zimbra@unicaen.fr>",
+    "account": "orange",
+    "folder": "IAE Caen Alumni",
+    "action": "classé via règle → IAE Caen Alumni",
+    "is_spam": false,
+    "ts": "2026-09-04T17:00:18+00:00"
+  },
+  {
+    "message_id": "<e0d3c5350ec8bd6c-6a9ae3cf419eb@evento.renater.fr>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-04T17:00:19+00:00"
+  },
+  {
+    "message_id": "<AC700000000176FD0BF50DFFC4Cmscom_mkt_prod3@infoemails.microsoft.com>",
+    "account": "outlook",
+    "folder": "Microsoft",
+    "action": "classé via règle → Microsoft",
+    "is_spam": false,
+    "ts": "2026-09-05T09:00:07+00:00"
+  },
+  {
+    "message_id": "<202605090503.334a38rbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-09-05T09:00:07+00:00"
+  },
+  {
+    "message_id": "<8c658e3a-c617-4dbd-b3cd-a77af93f59c2@fra3s50mta0655.xt.local>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via groq → À trier",
+    "is_spam": false,
+    "ts": "2026-09-05T09:00:08+00:00"
+  },
+  {
+    "message_id": "<202605090717.335onorbznpwbj@shared-p100-i10.d.sp1-brevo.net>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "classé via règle → À trier",
+    "is_spam": false,
+    "ts": "2026-09-05T09:00:08+00:00"
+  },
+  {
+    "message_id": "<1448771464.25648523.1788594011487@lva2-app68297.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-05T09:00:09+00:00"
+  },
+  {
+    "message_id": "<1262794920.19169855.1788608410770@ltx1-app84971.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-05T17:00:06+00:00"
+  },
+  {
+    "message_id": "<1605749391.23174191.1788617684684@ltx1-app68951.prod.linkedin.com>",
+    "account": "orange",
+    "folder": "À trier",
+    "action": "supprimé via règle (règle low_value/spam) → Corbeille",
+    "is_spam": true,
+    "ts": "2026-09-05T17:00:07+00:00"
+  }
+]

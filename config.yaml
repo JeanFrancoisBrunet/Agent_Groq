@@ -1,0 +1,13 @@
+# =============================================================================
+#  agent_groq.py — configuration persistante
+#  Clé API dans ~/Projects/Groq_agent/.groq_config
+# =============================================================================
+
+model: qwen/qwen3.6-27b
+user_label: Jean-François
+max_tokens: 2048
+max_history: 10
+temperature: 0.2
+reflect: true
+exchange_idx: 128
+max_auto_writes_per_day: 10

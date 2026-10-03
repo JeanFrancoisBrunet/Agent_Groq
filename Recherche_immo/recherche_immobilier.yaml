@@ -1,0 +1,39 @@
+# recherche_immobilier.yaml — configuration
+
+gmail:
+  host: imap.gmail.com
+  port: 993
+  user: jfbconseil14@gmail.com
+  dossier: Immo                         # libellé Gmail créé par le filtre
+  mot_de_passe_env: GMAIL_APP_PW        # jamais la valeur en clair ici
+  # Mot de passe déjà utilisé par emails_scan.py (chmod 600, hors Git) :
+  fichier_secrets: ~/Projects/Groq_agent/Scan_emails/.secrets.env
+
+# Un e-mail n'est analysé que si son expéditeur contient l'un de ces mots.
+expediteurs:
+  - seloger
+
+jours_max: 90                 # fenêtre de lecture des e-mails (jours)
+inclure_similaires: false     # false : ignore les « annonces similaires »
+                              # (hors de votre recherche) ajoutées par SeLoger
+
+# Critères appliqués aux annonces lues, par transaction. Tous facultatifs.
+# Une valeur absente sur l'annonce (ex. pièces non indiquées) n'exclut pas l'annonce. 
+# Loyer mensuel pour « location », prix pour « achat ».
+criteres:
+  location:
+    # pieces_min: 1
+    pieces_max: 3
+    # surface_min: 15
+    # surface_max: 40
+    # budget_min: 0
+    budget_max: 600
+    codes_postaux: ["61300"]
+  achat:
+    # pieces_min: 1
+    pieces_max: 3
+    # surface_min: 15
+    # surface_max: 40
+    # budget_min: 40000
+    budget_max: 200000
+    codes_postaux: ["61300"]

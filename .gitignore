@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+ 
+*.log
+*.lock
+ 
+.groq*config
+ 
+.secrets.env
+.env
+ 
+.msal_t*ken_cache.json
+ 
+.myagent*history.json
+.myagent/token_usage.*son
+.myagent/vectors.json

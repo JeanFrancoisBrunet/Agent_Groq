@@ -1,0 +1,80 @@
+[
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "profil_utilisateur",
+    "fact": "Jean‑François, consultant, formateur et auteur du livre « Le Joueur de Flux », enseigne le Lean Management à Caen et Paris‑Dauphine, possède une collection de bandes‑dessinées et une bibliothèque de grands auteurs, et s’intéresse aux formations Lean et aux ateliers pratiques pour mettre en œuvre le Lean au plus haut niveau de l’entreprise."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "raspberry_pi",
+    "fact": "Il exploite un Raspberry Pi 5 (IP 192.168.1.200, 16 Go de RAM, 1 To NVMe, 256 Go micro SD et 256 Go USB) pour développer un agent Groq, sécuriser son appareil et communiquer via des Bots en Python, tout en utilisant les logiciels de statistiques Minitab et Ellistat."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "smartphone",
+    "fact": "Il communique via des Bots en Python sur son Samsung S23 avec la messagerie Telegram, utilisant l’application mobile pour recevoir des notifications et gérer les interactions."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "reachy_mini",
+    "fact": "Il souhaite ajouter des commandes pour piloter le robot Reachy Mini, robot opérationnel mais sans bras ni doigts, nécessitant une mise à jour de ses compétences ou de sa mémoire."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "lean",
+    "fact": "Il enseigne le Lean Management et cherche à appliquer les principes Lean (5S, A3, Andon, Gemba, Hoshin Kanri, etc.) à l’échelle de l’entreprise, tout en s’intéressant aux formations Lean et aux ateliers pratiques pour mettre en œuvre le Lean au plus haut niveau de l’entreprise."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "statistiques",
+    "fact": "Il utilise les logiciels de statistiques Minitab et Ellistat pour analyser ses données."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "montre",
+    "fact": "Il recherche des montres Omega et s’intéresse à la boutique timekeeping.fr pour acheter une montre neuve."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "littérature",
+    "fact": "Il possède une bibliothèque de grands auteurs et s’intéresse à l’auteur Honoré de Balzac, souhaitant connaître la vie et l’œuvre de Balzac, notamment La Comédie humaine et certains romans phares."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "philosophie",
+    "fact": "Il s’intéresse à la philosophie, avec Socrate et Platon."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "bande_dessinée",
+    "fact": "Il possède une collection de bandes dessinées, notamment des œuvres de Goscinny, Hergé, et autres grands auteurs, et s’intéresse à la collection de bandes‑dessinées mentionnée dans ses activités."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "musique",
+    "fact": "Il s’intéresse à la musique classique, a demandé la liste de compositeurs classiques et peut avoir un intérêt pour la musique autrichienne ou allemande."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "jeux",
+    "fact": "Il aime pratiquer le jeu d'échecs ainsi que le jeu de Go, et cherche à comprendre l’objectif du jeu Go."
+  },
+  {
+    "date": "2026-10-01 22:04",
+    "source": "consolidation",
+    "theme": "faits_ponctuels",
+    "fact": "User wants a concise summary of the provided text in 3-4 lines."
+  }
+]

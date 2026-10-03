@@ -1,0 +1,163 @@
+# rules_jfbconseils.yaml — Règles de pré-classification pour Outlook/Gmail
+# (compte professionnel), évaluées AVANT tout appel à Groq.
+# Première règle qui correspond gagne (ordre = priorité).
+#
+# match_type: "domain" (partie après @, exacte), "domain_suffix" (domaine ou
+#             sous-domaine, ex. "microsoft.com" couvre aussi accountprotection.microsoft.com), 
+#             ou "sender" (adresse exacte)
+# folder: chemin exact de taxonomy_jfbconseils.yaml, ou null si action != classement
+# action: "classer" (défaut, implicite si folder renseigné), "low_value", "spam"
+
+rules:
+  - match_type: domain
+    match: "dauphine.psl.eu"
+    folder: "Universités/Dauphine Paris"
+
+  - match_type: domain
+    match: "ensicaen.fr"
+    folder: "Universités/EnsiCaen IT2I"
+
+  - match_type: domain
+    match: "fibn.fr"
+    folder: "Universités/EnsiCaen IT2I"
+
+  - match_type: domain_suffix
+    match: "ecole.ensicaen.fr"
+    folder: "Universités/EnsiCaen IT2I"
+
+  - match_type: domain_suffix
+    match: "malakoffhumanis.com"
+    folder: "Universités/EnsiCaen IT2I"
+
+  - match_type: sender
+    match: "meriem.bensalah@unicaen.fr"
+    folder: "Universités/Campus 1"
+
+  - match_type: sender
+    match: "nathalie.beaudegel@unicaen.fr"
+    folder: "Universités/Campus 1"
+
+  - match_type: sender
+    match: "marine.cadic@unicaen.fr"
+    folder: "Universités/Campus 1"
+
+  - match_type: sender
+    match: "marine.folliot@unicaen.fr"
+    folder: "Universités/Campus 1"
+
+  - match_type: sender
+    match: "jerome.serais@unicaen.fr"
+    folder: "Universités/Campus 2"
+
+  - match_type: sender
+    match: "florence.beaussier-duval@unicaen.fr"
+    folder: "Universités/Campus 2"
+
+  - match_type: sender
+    match: "aurelien.lamy@unicaen.fr"
+    folder: "Universités/Campus 2"
+
+  - match_type: sender
+    match: "ch74richard@orange.fr"
+    folder: "Institut Lean France/CES Alumni"
+
+  - match_type: sender
+    match: "christopheordano@substack.com"
+    folder: "Consulting/Christophe Ordano"
+    # sans cette règle, aucun rule ne matche (substack.com héberge des centaines de newsletters différentes,
+    # un domain_suffix serait donc bien trop large).
+
+  - match_type: domain_suffix
+    match: "leanfrance.org"
+    folder: "Institut Lean France"
+
+  - match_type: domain
+    match: "leanfrance.fr"
+    folder: "Institut Lean France/Newsletter"
+
+  - match_type: domain
+    match: "sanef.com"
+    folder: "JFB Conseils/Déplacements/Sanef"
+
+  - match_type: domain_suffix
+    match: "lego.com"
+    folder: "JFB Conseils/Livres Jeux/Lego"
+
+  - match_type: domain_suffix
+    match: "hlp.group"
+    folder: "JFB Conseils/Prestations/HLP Group"
+
+  - match_type: domain_suffix
+    match: "tiime.fr"
+    folder: "JFB Conseils/Tiime"
+
+  - match_type: domain_suffix
+    match: "livestormevents.com"
+    folder: "JFB Conseils/Tiime"
+    # les invitations/webinars Tiime ne partent PAS depuis tiime.fr 
+    # mais depuis la plateforme tierce Livestorm (livestormevents.com)
+    # → la règle ci-dessus ne matchait donc pas avec JFB Conseils/Tiime,
+    # et Groq peut mal le classer.
+    # ⚠ Limite : Livestorm héberge aussi des webinars d'autres sociétés.
+    # Si un jour un webinar non-Tiime arrive via livestormevents.com,
+    # il atterrira ici par erreur — à surveiller, et si ça arrive,
+    # remplacer cette règle par un tri manuel au cas par cas.
+
+  - match_type: sender
+    match: "dcl.normandie@urssaf.fr"
+    folder: "JFB Conseils/Urssaf"
+
+  - match_type: sender
+    match: "dcl.limousin@urssaf.fr"
+    folder: "JFB Conseils/Urssaf/Sécurité Sociale Auteurs"
+
+  - match_type: domain
+    match: "info.secu-artistes-auteurs.fr"
+    folder: "JFB Conseils/Urssaf/Sécurité Sociale Auteurs"
+
+  - match_type: domain
+    match: "info.urssaf.fr"
+    folder: "JFB Conseils/Urssaf/Info"
+
+  - match_type: domain_suffix
+    match: "wooclap.com"
+    folder: "JFB Conseils/Wooclap"
+
+  - match_type: domain_suffix
+    match: "flightaware.com"
+    folder: "Raspberry Pi5/FlightAware"
+
+  - match_type: domain
+    match: "raspberrytips.fr"
+    folder: "Raspberry Pi5/Tips"
+
+  - match_type: domain_suffix
+    match: "minitab.com"
+    folder: "Statistiques/Minitab"
+
+  - match_type: domain_suffix
+    match: "ellistat.com"
+    folder: "Statistiques/Ellistat"
+
+  - match_type: sender
+    match: "camille.forest@ellistat.com"
+    folder: "Statistiques/Ellistat"
+
+  - match_type: domain_suffix
+    match: "numworks.com"
+    folder: "Statistiques/Numworks"
+
+  - match_type: sender
+    match: "notifications@linkedin.com"
+    folder: null
+    action: low_value
+
+  - match_type: domain_suffix
+    match: "microsoft.com"
+    folder: "Microsoft"
+    # domain_suffix : couvre microsoft.com ET tous ses sous-domaines
+    # (accountprotection.microsoft.com, azure-noreply@microsoft.com, etc.)
+
+# Ajoute ici au fil de l'eau les expéditeurs récurrents que Groq classe
+# systématiquement de la même façon — le script te les proposera dans son
+# rapport quand il détecte un pattern fiable (3 occurrences identiques).

@@ -1,0 +1,434 @@
+# Règles de pré-classification pour la boîte Orange (personnelle).
+# Même moteur que rules_jfbconseils.yaml (Outlook/Gmail), 
+# mais fichier séparé — dossiers cibles différents (voir taxonomy_orange.yaml).
+#
+# match_type: "domain" (partie après @, exacte), "domain_suffix" (domaine ou
+#             sous-domaine), ou "sender" (adresse exacte)
+# folder: chemin exact de taxonomy_orange.yaml
+# action: "classer" (défaut), "low_value" (part quand même dans "À trier" —
+#         Orange ne supprime jamais automatiquement, voir scan.orange_classify_only)
+
+rules:
+  # Exceptions : "transfer_outlook" — contacts professionnels qui écrivent à
+  # l'adresse Orange (perso) mais dont le suivi doit rester sur Outlook (pro).
+  # Contrairement aux autres règles Orange, "folder" ici est un chemin de
+  # taxonomy_jfbconseils.yaml (Outlook), PAS de taxonomy_orange.yaml.
+  # Comportement (voir process_account, cas account_name == "orange" et
+  # action == "transfer_outlook") : le mail est importé tel quel dans le dossier Outlook indiqué, 
+  # puis l'original Orange est déplacé vers la Corbeille Orange (jamais de purge définitive), 
+  # comme le fait déjà le workflow Gmail → Outlook.
+
+  - match_type: sender
+    match: "aqm.normandie@gmail.com"
+    folder: "Consulting/AQM"
+    action: transfer_outlook
+
+  - match_type: sender
+    match: "christianschaeffer14@gmail.com"
+    folder: "Consulting/AQM"
+    action: transfer_outlook
+
+  - match_type: sender
+    match: "katie@kbjanderson.com"
+    folder: "Consulting/Katie Anderson"
+    action: transfer_outlook
+
+  - match_type: domain_suffix
+    match: "lego.com"
+    folder: "JFB Conseils/Livres Jeux/Lego"
+    action: transfer_outlook
+
+  - match_type: domain_suffix
+    match: "malakoffhumanis.com"
+    folder: "Universités/EnsiCaen IT2I"
+    action: transfer_outlook
+
+  # Demande explicite : LinkedIn / offres d'emploi / newsletters ...
+  # doivent atterrir dans "À trier" pour relecture, jamais classées ailleurs ni supprimées automatiquement.
+
+  - match_type: domain_suffix
+    match: "linkedin.com"
+    folder: null
+    action: low_value 
+
+  - match_type: domain_suffix
+    match: "indeed.com"
+    folder: "À trier"
+
+  - match_type: domain_suffix
+    match: "hellowork.com"
+    folder: "À trier"
+
+  - match_type: domain_suffix
+    match: "echecs-et-strategie.com"
+    folder: "À trier"
+
+  - match_type: domain_suffix
+    match: "ameli.fr"
+    folder: "Ameli - Santé"
+
+  - match_type: domain_suffix
+    match: "laboconnect.com"
+    folder: "Ameli - Santé/Laboratoire"
+
+  - match_type: domain_suffix
+    match: "doctolib.com"
+    folder: "Ameli - Santé/Médecin"
+
+  - match_type: domain_suffix
+    match: "cpms.fr"
+    folder: "Ameli - Santé/Mutuelle/CPMS"
+
+  - match_type: domain_suffix
+    match: "duolingo.com"
+    folder: null
+    action: low_value 
+
+  - match_type: domain_suffix
+    match: "gymglish.com"
+    folder: "Anglais/Gymglish"
+
+  - match_type: domain_suffix
+    match: "bred.fr"
+    folder: "Banques/Bred"
+
+  - match_type: domain_suffix
+    match: "creditmutuel-ere.fr"
+    folder: "Banques/Crédit Mutuel"
+
+  - match_type: domain_suffix
+    match: "societe-generale.fr"
+    folder: "Banques/Société Générale"
+
+  - match_type: domain_suffix
+    match: "swisslife.fr"
+    folder: "Banques/Swiss Life"
+
+  - match_type: domain_suffix
+    match: "uff.net"
+    folder: "Banques/UFF"
+
+  - match_type: sender
+    match: "gilles_raguenes@uff.net"
+    folder: "Banques/UFF"
+
+  - match_type: sender
+    match: "om@vallees-orne-odon.fr"
+    folder: "Baron-Odon/Déchets - Ecocito"
+
+  - match_type: domain_suffix
+    match: "vallees-orne-odon.fr"
+    folder: "Baron-Odon/Déchets - Ecocito"
+
+  - match_type: domain_suffix
+    match: "gendarmerie.interieur.gouv.fr"
+    folder: "Baron-Odon/Gendarmerie"
+
+  - match_type: domain_suffix
+    match: "laposte.info"
+    folder: "Baron-Odon/La Poste"
+
+  - match_type: domain_suffix
+    match: "info.laposte.fr"
+    folder: "Baron-Odon/La Poste"
+
+  - match_type: domain_suffix
+    match: "digiposte.fr"
+    folder: "Baron-Odon/La Poste"
+
+  - match_type: sender
+    match: "mairie.baronsurodon@wanadoo.fr"
+    folder: "Baron-Odon/Mairie"
+
+  - match_type: domain_suffix
+    match: "inscriptionelectorale.service-public.fr"
+    folder: "Baron-Odon/Mairie"
+
+  - match_type: domain_suffix
+    match: "caenlazare.notaires.fr"
+    folder: "Baron-Odon/Notaire"
+
+  - match_type: domain_suffix
+    match: "saurclient.fr"
+    folder: "Baron-Odon/SAUR"
+
+  - match_type: domain_suffix
+    match: "obat.fr"
+    folder: "Baron-Odon/Travaux/Electricien"
+
+  - match_type: sender
+    match: "contact.cnelec@gmail.com"
+    folder: "Baron-Odon/Travaux/Electricien"
+    # Claude Nigaize
+
+  - match_type: sender
+    match: "paysage.aure@outlook.fr"
+    folder: "Baron-Odon/Travaux/Jardin"
+    # Jérôme Parent
+
+  - match_type: sender
+    match: "chdaligault@neuf.fr"
+    folder: "Baron-Odon/Travaux/Jardin"
+    # Christophe Daligault
+
+  - match_type: domain_suffix
+    match: "castorama.fr"
+    folder: "Baron-Odon/Travaux/Castorama"
+
+  - match_type: domain_suffix
+    match: "leroymerlin.fr"
+    folder: "Baron-Odon/Travaux/Leroy Merlin"
+
+  - match_type: domain_suffix
+    match: "larcher.fr"
+    folder: "Baron-Odon/Travaux/Larcher"
+
+  - match_type: domain_suffix
+    match: "somfy.com"
+    folder: "Baron-Odon/Travaux/Somfy Protect"
+
+  - match_type: sender
+    match: "vereecke.denis@orange.fr"
+    folder: "Baron-Odon/Travaux/Vereecke"
+
+  - match_type: domain_suffix
+    match: "apec.fr"
+    folder: "Emploi/APEC"
+
+  - match_type: domain_suffix
+    match: "fnac.com"
+    folder: "Fnac"
+
+  - match_type: domain_suffix
+    match: "iaecaenalumni.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: domain_suffix
+    match: "alumnforce.com"
+    folder: null
+    action: low_value
+
+  - match_type: sender
+    match: "iae.communication@unicaen.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "florent.damotte@alumnforce.com"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "marie.brohier@unicaen.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "b.lemarchand@deauville.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "jeremie.lecavelier@unicaen.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "marylene.follain@hotmail.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "carre.st@free.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "thierry.danos@yahoo.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: sender
+    match: "eric.olow@viacesi.fr"
+    folder: "IAE Caen Alumni"
+
+  - match_type: domain_suffix
+    match: "dgfip.finances.gouv.fr"
+    folder: "Impôts"
+
+  - match_type: domain_suffix
+    match: "inpi.fr"
+    folder: "INPI"
+
+  - match_type: domain_suffix
+    match: "m.shopifyemail.com"
+    folder: "Livres JFB/Daruma"
+
+  - match_type: domain_suffix
+    match: "editions-daruma.fr"
+    folder: "Livres JFB/Daruma"
+
+  - match_type: domain_suffix
+    match: "harmattan.fr"
+    folder: "Livres JFB/L'Harmattan"
+
+  - match_type: domain_suffix
+    match: "gallimard.fr"
+    folder: "Livres JFB/Pleiade cercle"
+
+  - match_type: domain_suffix
+    match: "la-pleiade.fr"
+    folder: "Livres JFB/Pleiade cercle"
+
+  - match_type: domain_suffix
+    match: "microsoft.com"
+    folder: "Microsoft-McAfee"
+    # attention doublon avec Outlook
+
+  - match_type: domain_suffix
+    match: "mcafee.com"
+    folder: "Microsoft-McAfee"
+
+  - match_type: sender
+    match: "noreply@orange.com"
+    folder: "Orange"
+
+  - match_type: domain_suffix
+    match: "francetv.fr"
+    folder: null
+    action: low_value 
+
+  - match_type: domain_suffix
+    match: "yes-yes.com"
+    folder: "Orange/Yes Yes"
+
+  - match_type: sender
+    match: "collet.albane@laposte.net"
+    folder: "Perso/Albane"
+
+  - match_type: sender
+    match: "catherine_mouton@orange.fr"
+    folder: "Perso/Catherine"
+
+  - match_type: sender
+    match: "corinnelebars1@gmail.com"
+    folder: "Perso/Corinne Le Bars"
+
+  - match_type: sender
+    match: "i.pequeno@orange.fr"
+    folder: "Perso/Isabel"
+
+  - match_type: sender
+    match: "martial.durin7@gmail.com"
+    folder: "Perso/Martial Durin"
+
+  - match_type: sender
+    match: "contact@photographe-caen.com"
+    folder: "Perso/Photos Portrait"
+
+  - match_type: sender
+    match: "beaufils.pierre@orange.fr"
+    folder: "Perso/Pierre Beaufils"
+
+  - match_type: sender
+    match: "philippe.guillard@volvo.com"
+    folder: "Perso/Promo IT2I"
+
+  - match_type: sender
+    match: "pibrion@gmail.com"
+    folder: "Perso/Promo IT2I"
+
+  - match_type: sender
+    match: "denis.lebonnois@orange.fr"
+    folder: "Perso/Promo IT2I"
+
+  - match_type: sender
+    match: "pascal.dieudonne0978@orange.fr"
+    folder: "Perso/Promo IT2I"
+
+  - match_type: sender
+    match: "boutrois.emmanuel@neuf.fr"
+    folder: "Perso/Promo IT2I"
+
+  - match_type: sender
+    match: "yves.bonicel@orange.fr"
+    folder: "Perso/Yves Bonicel"
+
+  - match_type: sender
+    match: "isabelle.lampee.baumgartner@gmail.com"
+    folder: "Perso/Vacances"
+
+  - match_type: domain_suffix
+    match: "tp-link.com"
+    folder: "Raspberry/Camera - Tapo"
+
+  - match_type: domain_suffix
+    match: "kubii.com"
+    folder: "Raspberry/Kubii"
+
+  - match_type: domain_suffix
+    match: "esnault.fr"
+    folder: "Studio Aigle/Agence Immo Esnault"
+
+  - match_type: sender
+    match: "rugles@guyhoquet.com"
+    folder: "Studio Aigle/Agence Immo Guy Hoquet"
+
+  - match_type: sender
+    match: "noreply-guyhoquet-viking-immobilier-normandie@mygercop.com"
+    folder: "Studio Aigle/Agence Immo Guy Hoquet"
+
+  - match_type: domain_suffix
+    match: "swizy.fr"
+    folder: "Swizy (CE IMV)"
+
+  - match_type: domain_suffix
+    match: "edenredplus.com"
+    folder: "Ticket Restaurant"
+
+  - match_type: domain_suffix
+    match: "actu.edenred.fr"
+    folder: "Ticket Restaurant"
+
+  - match_type: domain_suffix
+    match: "toyotafrance.fr"
+    folder: "Toyota"
+
+  - match_type: domain_suffix
+    match: "groupegca.com"
+    folder: "Toyota"
+
+  - match_type: domain_suffix
+    match: "blablacar.com"
+    folder: "Toyota/BlaBla Car"
+
+  - match_type: domain_suffix
+    match: "roole.fr"
+    folder: "Toyota/Roole"
+
+  - match_type: domain_suffix
+    match: "waze.com"
+    folder: "Toyota/Waze"
+
+  - match_type: domain_suffix
+    match: "confirmation.all.com"
+    folder: "Voyages/Hotels"
+
+  - match_type: domain_suffix
+    match: "reservation.accor-mail.com"
+    folder: "Voyages/Hotels"
+
+  - match_type: domain_suffix
+    match: "accor.com"
+    folder: "Voyages/Hotels"
+
+  - match_type: domain_suffix
+    match: "sncf.com"
+    folder: "Voyages/Transport : Air France, RATP"
+
+  - match_type: domain_suffix
+    match: "airfrance.com"
+    folder: "Voyages/Transport : Air France, RATP"
+
+  - match_type: domain_suffix
+    match: "info-flyingblue.com"
+    folder: "Voyages/Transport : Air France, RATP"
+
+  - match_type: domain_suffix
+    match: "bonjour-ratp.fr"
+    folder: "Voyages/Transport : Air France, RATP"
+
+# Ajouter ici au fil de l'eau les expéditeurs récurrents (banques, assurances, etc.) 
+# au fur et à mesure qu'ils apparaissent dans les rapports — même logique que rules_jfbconseils.yaml.

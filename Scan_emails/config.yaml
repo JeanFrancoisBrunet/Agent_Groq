@@ -1,0 +1,74 @@
+# =============================================================================
+#  emails_scan.py — configuration
+#  ~/Projects/Groq_agent/Scan_emails/config.yaml
+# =============================================================================
+
+imap:
+  gmail:
+    host: imap.gmail.com
+    port: 993
+    user: jfbconseil14@gmail.com
+    app_password_env: GMAIL_APP_PW      # jamais la valeur en clair ici
+  orange:
+    host: imap.orange.fr
+    port: 993
+    user: jeanfrancois-brunet@orange.fr
+    app_password_env: ORANGE_APP_PW     # mot de passe dédié (double authentification active)
+
+# Outlook n'est plus en IMAP (Microsoft a retiré Basic Auth pour les comptes
+# personnels depuis sept. 2024) — voir GraphAccount dans emails_scan.py.
+graph:
+  client_id: "4045425e-8c1b-4f13-a399-de1b69467b48"   # app "JFB Email Agent" (Entra ID)
+  user: jeanfrancois.brunet@outlook.fr                # indice de compte pour msal (pas un secret)
+  token_cache_path: ~/Projects/Groq_agent/Scan_emails/.msal_token_cache.json
+
+groq:
+  config_path: ~/Projects/Groq_agent/.groq_config
+  model_classification: openai/gpt-oss-20b            # rapide/économe, gros volume
+  model_reply: openai/gpt-oss-120b                    # meilleure qualité pour les brouillons
+
+telegram:
+  config_path: ~/.telegram_config
+
+autonomy:
+  auto_send_types:                                    # seuls types de réponse envoyés sans validation
+    - accuse_reception_simple
+
+history:
+  max_entries: 100
+  path: ~/Projects/Groq_agent/Scan_emails/history.json
+
+scan:
+  gmail_target_after_process: outlook    # tout message Gmail légitime part vers Outlook
+  gmail_must_be_emptied: true            # purge Gmail (dossiers + messages) après traitement
+  since_days_first_run: 30               # limite le tout premier scan pour éviter un backlog massif
+  never_auto_delete: true                # TOUS comptes : jamais de suppression auto d'un mail jugé spam — part dans "À trier" pour relecture
+                                         # Pour Outlook, "supprimer" reste de toute façon récupérable (déplacement vers éléments supprimés).
+  orange_classify_only: true             # Orange : en plus de never_auto_delete ci-dessus, jamais de réponse automatique non plus (classement seul)
+
+paths:
+  root: ~/Projects/Groq_agent/Scan_emails
+  rules_file_jfbconseils: ~/Projects/Groq_agent/Scan_emails/rules_jfbconseils.yaml
+  rules_file_orange: ~/Projects/Groq_agent/Scan_emails/rules_orange.yaml
+  taxonomy_file_jfbconseils: ~/Projects/Groq_agent/Scan_emails/taxonomy_jfbconseils.yaml
+  taxonomy_file_orange: ~/Projects/Groq_agent/Scan_emails/taxonomy_orange.yaml   
+  workspace: ~/Projects/Groq_agent/Scan_emails/workspace
+  events_log: ~/Projects/Groq_agent/Scan_emails/events.log
+
+# -----------------------------------------------------------------------------
+# SECRETS :
+#
+# Ne JAMAIS mettre GMAIL_APP_PW dans ce fichier ni dans ~/.bashrc : 
+# cron ne charge pas ~/.bashrc, donc une variable exportée là-bas serait invisible
+# du script lancé par crontab.
+#
+# Créer à la place :
+#   ~/Projects/Groq_agent/Scan_emails/.secrets.env   (chmod 600, hors Git)
+# Contenu :
+#   GMAIL_APP_PW=xxxx xxxx xxxx xxxx
+#
+# Outlook n'a plus de mot de passe à gérer ici : l'authentification passe par
+# .msal_token_cache.json (généré automatiquement au 1er lancement interactif, 
+# voir l'en-tête d'emails_scan.py). Ce fichier de cache est aussi un secret — 
+# chmod 600, jamais dans Git, au même titre que .secrets.env.
+# -----------------------------------------------------------------------------

@@ -1,0 +1,425 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  MEMORY ENGINE — THÈMES DE CONSOLIDATION
+#  Pour ajouter un thème : une entrée dans ce fichier suffit (sans toucher au code Python). 
+#  Redémarrez l'agent / le bot pour prendre en compte les changements.
+#
+#  keywords : mots-clés qui orientent le LLM lors du classement des faits.
+#  Un mot-clé peut se retrouver dans un ou plusieurs thèmes.
+#
+#  L'ORDRE des thèmes ici détermine l'ordre de restitution lors de la consolidation 
+#  (consolidate_long_memory respecte l'ordre déclaré).
+#
+#  Le thème avec une liste "keywords" vide sert de bac par défaut. A toujours garder ("faits_ponctuels")
+# ══════════════════════════════════════════════════════════════════════════════
+
+profil_utilisateur:
+  label: "Profil utilisateur"
+  keywords:
+    - auteur
+    - baron sur odon
+    - consultant
+    - expert lean
+    - formateur
+    - france
+    - imv technologies
+    - ingénieur
+    - jean-françois
+    - jfbconseils
+    - joueur de flux
+    - l'harmattan
+    - lisi
+    - mécanique
+    - prénom
+    - professeur
+    - universitaire
+    - université
+    - vacataire
+
+raspberry_pi:
+  label: "Raspberry Pi / Linux / Programmation"
+  keywords:
+    - agent
+    - api
+    - apt
+    - arm
+    - bash
+    - bookworm
+    - code
+    - debian
+    - embeddings
+    - geany
+    - gpio
+    - groq
+    - intelligence artificielle
+    - json
+    - linux
+    - llm
+    - machine learning
+    - modèle
+    - nvme
+    - openai
+    - pi
+    - pip
+    - programmation
+    - python
+    - raspberry
+    - script
+    - shell
+    - ssd
+    - terminal
+    - token
+    - yaml
+
+smartphone:
+  label: "Samsung S23 / Telegram / Bots / Termux"
+  keywords:
+    - application mobile
+    - bot
+    - botfather
+    - message
+    - mobile
+    - notification
+    - s23
+    - samsung
+    - smartphone
+    - telegram
+    - telegram-bot
+    - termux
+
+reachy_mini:
+  label: "Reachy Mini (robot)"
+  keywords:
+    - cm4
+    - hugging face
+    - humanoïde
+    - lite
+    - open-source
+    - pollen robotics
+    - reachy
+    - robot
+    - robot_gesture
+    - robot_listen
+    - robot_look
+    - robot_say 
+    - robot_see
+    - wireless
+
+securite_camera:
+  label: "Sécurité / Caméra / Timelapse / Motion"
+  keywords:
+    - caméra
+    - camera
+    - capture
+    - détection
+    - enregistrement
+    - image
+    - imx
+    - jpeg
+    - jpg
+    - motion
+    - mouvement
+    - mp4
+    - png
+    - streaming
+    - surveillance
+    - timelapse
+    - vidéo
+
+lean:
+  label: "Lean / Management"
+  keywords:
+    - 5s
+    - a3
+    - andon
+    - chorobiki
+    - daruma
+    - efficiency
+    - gemba
+    - hansei
+    - heijunka
+    - hitozokuri
+    - hoshin kanri
+    - institut lean france
+    - ishikawa
+    - jidoka
+    - just-in-time
+    - juste à temps
+    - kaizen
+    - kamishibai
+    - kanban
+    - kotozokuri
+    - lean
+    - maintenance
+    - management
+    - mendo-mi
+    - mifa
+    - monozukuri
+    - muda
+    - mura
+    - muri
+    - nemawashi
+    - obeya
+    - pdca
+    - sensei
+    - smed
+    - standard
+    - standardized work
+    - tear-down
+    - toyota
+    - tpm
+    - tps
+    - trade-off
+    - value analysis
+    - value engineering
+    - vsm
+    - waste
+    - yamazumi
+    - yokoten
+
+statistiques:
+  label: "Statistique / DOE"
+  keywords:
+    - anova
+    - balle
+    - capabilité
+    - catapulte
+    - corrélation
+    - covariance
+    - cpk
+    - distance
+    - doe
+    - écart type
+    - échantillon
+    - ellistat
+    - expériences
+    - gage r&r
+    - gauss
+    - homographie
+    - hypothèse
+    - khi deux
+    - khi 2
+    - lancer
+    - médiane
+    - minitab
+    - moyenne
+    - normale
+    - normalité
+    - population
+    - quarto
+    - r
+    - r&r
+    - régression
+    - sigma
+    - statistique
+    - test t
+    - test z
+    - trajectoire
+    - variance
+    - weibull
+
+organisation:
+  label: "Organisation / Agenda / Email"
+  keywords:
+    - agenda
+    - calendrier
+    - conférence
+    - email
+    - gestion
+    - mail
+    - organisation
+    - planning
+    - rdv
+    - réunion
+    - séminaire
+    - tâche
+    - webconf
+    - webinaire
+
+montre:
+  label: "Montre / Garde Temps / Chronomètre"
+  keywords:
+    - breitling
+    - chronomètre
+    - garde temps
+    - horloger
+    - horlogerie
+    - jaeger-lecoultre
+    - lip
+    - montre automatique
+    - montre mécanique
+    - montre
+    - omega
+    - quartz
+    - rolex
+    - timekeeping
+    - vulcain 
+
+littérature:
+  label: "Livre / Oeuvre / Ecrivain / Auteur / Editeur / Roman / Poème / Conte"
+  keywords:
+    - alain
+    - andersen
+    - aragon
+    - aymé
+    - balzac
+    - baudelaire
+    - beaumarchais
+    - bible
+    - camus
+    - carroll
+    - céline
+    - cervantès
+    - chateaubriand
+    - colette
+    - conrad
+    - coran
+    - corneille
+    - daudet
+    - descartes
+    - diderot
+    - dostoïevski
+    - dumas
+    - faulkner
+    - flaubert
+    - gracq
+    - hemingway
+    - homère
+    - hugo
+    - kafka
+    - kant
+    - la bruyère
+    - la fontaine
+    - laclos
+    - machiavel
+    - maupassant
+    - mérimée
+    - michelet
+    - molière
+    - montaigne
+    - montesquieu
+    - pascal
+    - platon
+    - pléiade
+    - poe
+    - proust
+    - rabelais
+    - rimbaud
+    - rousseau
+    - saint exupéry
+    - sartre
+    - sévigné
+    - shakespeare
+    - spinoza
+    - stendhal
+    - swift
+    - vallès
+    - voltaire
+    - zola
+
+philosophie:
+  label: "Philosophe / Pensée / Conscience / Inconscience / Morale"
+  keywords:
+    - aristote
+    - descartes
+    - épicure
+    - foucault
+    - hegel
+    - heidegger
+    - kant
+    - marx
+    - nietzsche
+    - platon
+    - sartre
+    - schopenhauer
+    - socrate
+    - spinoza
+
+bande_dessinée:
+  label: "Bande Dessinée / Dessin / Dessinateur"
+  keywords:
+    - astérix
+    - boule et bill
+    - corto maltese
+    - franquin
+    - gaston
+    - goscinny
+    - gotlib
+    - haddock
+    - hergé
+    - joe bar
+    - lagaffe
+    - milou
+    - obélix
+    - tintin
+    - tournesol
+    - uderzo
+
+musique:
+  label: "Musique / Classique / Jazz / Rock"
+  keywords:
+    - acdc
+    - ac/dc
+    - aerosmith
+    - art tatum
+    - bach
+    - barbara
+    - beethoven
+    - bill evans
+    - billy paul
+    - bruce springsteen
+    - charlie parker
+    - count basie
+    - daft punk
+    - deep purple
+    - dexter gordon
+    - guns n'roses
+    - hubert-félix thiéfaine
+    - jacques higelin
+    - jean-louis aubert
+    - joe satriani
+    - led zeppelin
+    - lionel hampton
+    - lucky peterson
+    - mano negra
+    - miles davis
+    - mozart
+    - paolo conte
+    - phil collins
+    - sarah vaughan
+    - serge gainsbourg
+    - sex pistols
+    - stan getz
+    - stray cats
+    - the beatles
+    - the clash
+    - the corrs
+    - the rolling stones
+    - the who
+    - trust
+    - u2
+    - zazie
+
+cinéma:
+  label: "Cinéma / Théâtre / Spectacle / Divertissement"
+  keywords:
+    - acteur
+    - actrice
+    - cinéma
+    - comédien
+    - film
+    - théâtre
+
+jeux:
+  label: "Jeu / Jouer / Réflexion"
+  keywords:
+    - échecs
+    - elo
+    - go
+    - jeu
+    - jeux
+    - stratégie
+    - tactique
+
+faits_ponctuels:
+  label: "Faits ponctuels / Divers"
+  keywords: []   # bac par défaut pour tout ce qui ne rentre pas ailleurs

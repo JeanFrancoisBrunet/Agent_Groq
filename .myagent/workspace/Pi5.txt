@@ -1,0 +1,4 @@
+Le Raspberry Pi, lancé en 2012, a été conçu pour rendre l’informatique abordable et pédagogique.
+Depuis, chaque nouvelle version a ajouté puissance, connectivité et fonctionnalités, ouvrant la voie à des projets variés comme la robotique, les serveurs personnels ou la domotique.
+En 2023, le Pi 5 a marqué une avancée majeure, offrant des performances proches d’un petit PC et intégrant des capacités d’intelligence artificielle grâce à une caméra Sony IMX500.
+Aujourd’hui, le Pi reste un outil d’apprentissage et d’innovation, inspirant millions de créateurs, étudiants et passionnés.
