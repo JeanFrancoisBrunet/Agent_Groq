@@ -18,3 +18,9 @@ Scan_emails/.secrets.env 
 .myagent/token_usage.json
 .myagent/vectors.json
 .myagent/events.log
+.myagent/history.json
+.myagent/*.bak*
+
+Recherche_immo/*.log
+Scan_emails/*.log
+Timekeeping/*.log
