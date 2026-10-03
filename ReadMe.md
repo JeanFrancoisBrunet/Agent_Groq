@@ -121,25 +121,25 @@ Sur le palier gratuit, GPT-OSS 120B et 20B n'accordent que **8 000 tokens/minute
 
 **Constantes réglables** (début de `agent_groq_ng.py`)
 
-| Constante | Défaut | Rôle |
-|---|---|---|
-| `FALLBACK_MODEL` | `openai/gpt-oss-20b` | Modèle de repli sur 429 long / quota journalier / 413 (`""` = désactivé) |
-| `REFLECT_MODEL` | `openai/gpt-oss-20b` | Modèle de l'auto-évaluation (quota indépendant du modèle principal) |
-| `TPM_SAFETY` | `0.85` | Part du quota/minute consommable avant de patienter |
-| `LOW_TPM_MAX_TOKENS` | `2000` | Plafond de sortie sur les modèles ≤ 8k tokens/min |
-| `TOOL_RESULT_CAP` | `1500` | Caractères max d'un résultat d'outil renvoyé au modèle |
-| `DAILY_TOKEN_LIMIT` | `200000` | Quota journalier (TPD) par modèle, corrigé si Groq annonce autre chose |
-| `ATTACH_PDF_MAX_BYTES` | `50000000` | Taille max d'un PDF sur disque (texte extrait tronqué à `ATTACH_PDF_MAX_CHARS` = 400 000) |
-| `AUTO_MODEL_SWITCH` | `True` | Bascule automatique d'un tour pour `/file` (voir plus bas) |
-| `SCAN_MODEL` | `openai/gpt-oss-20b` | Modèle de `/scan` |
-| `SCAN_WINDOW_MAX` | `9000` | Taille max d'une tranche de `/scan` (réduite selon le quota) |
-| `SCAN_OVERLAP` | `300` | Recouvrement entre tranches |
-| `SCAN_RECHECK_EMPTY` | `True` | Second essai d'une tranche vide contenant beaucoup de noms propres |
-| `SCAN_RECLASSIFY_CITED` | `True` | Reclasse en « cité » un sujet dont la moitié des faits parlent de citation/bibliographie/référence |
-| `SCAN_MERGE_MAX_GAP` | `2` | Écart max (en tranches) pour rattacher un prénom à un nom complet |
-| `AUTO_CLEAR_HISTORY_ON_FILE` | `True` | `/file` vide la mémoire courte (affiché) |
-| `SCAN_MAX_OUT` | `1500` | Tokens de sortie max par tranche |
-| `SCAN_CONFIRM_ABOVE` | `15000` | Au-delà de ce coût estimé (tokens), `/scan` demande O/n |
+| Constante                    | Défaut               | Rôle                                                                                               |
+|---                           |---                   |---                                                                                                 |
+| `FALLBACK_MODEL`             | `openai/gpt-oss-20b` | Modèle de repli sur 429 long / quota journalier / 413 (`""` = désactivé)                           |
+| `REFLECT_MODEL`              | `openai/gpt-oss-20b` | Modèle de l'auto-évaluation (quota indépendant du modèle principal)                                |
+| `TPM_SAFETY`                 | `0.85`               | Part du quota/minute consommable avant de patienter                                                |
+| `LOW_TPM_MAX_TOKENS`         | `2000`               | Plafond de sortie sur les modèles ≤ 8k tokens/min                                                  |
+| `TOOL_RESULT_CAP`            | `1500`               | Caractères max d'un résultat d'outil renvoyé au modèle                                             |
+| `DAILY_TOKEN_LIMIT`          | `200000`             | Quota journalier (TPD) par modèle, corrigé si Groq annonce autre chose                             |
+| `ATTACH_PDF_MAX_BYTES`       | `50000000`           | Taille max d'un PDF sur disque (texte extrait tronqué à `ATTACH_PDF_MAX_CHARS` = 400 000)          |
+| `AUTO_MODEL_SWITCH`          | `True`               | Bascule automatique d'un tour pour `/file` (voir plus bas)                                         |
+| `SCAN_MODEL`                 | `openai/gpt-oss-20b` | Modèle de `/scan`                                                                                  |
+| `SCAN_WINDOW_MAX`            | `9000`               | Taille max d'une tranche de `/scan` (réduite selon le quota)                                       |
+| `SCAN_OVERLAP`               | `300`                | Recouvrement entre tranches                                                                        |
+| `SCAN_RECHECK_EMPTY`         | `True`               | Second essai d'une tranche vide contenant beaucoup de noms propres                                 |
+| `SCAN_RECLASSIFY_CITED`      | `True`               | Reclasse en « cité » un sujet dont la moitié des faits parlent de citation/bibliographie/référence |
+| `SCAN_MERGE_MAX_GAP`         | `2`                  | Écart max (en tranches) pour rattacher un prénom à un nom complet                                  |
+| `AUTO_CLEAR_HISTORY_ON_FILE` | `True`               | `/file` vide la mémoire courte (affiché)                                                           |
+| `SCAN_MAX_OUT`               | `1500`               | Tokens de sortie max par tranche                                                                   |
+| `SCAN_CONFIRM_ABOVE`         | `15000`              | Au-delà de ce coût estimé (tokens), `/scan` demande O/n                                            |
 
 **Limites connues** : la fenêtre de 60 s est propre à chaque **processus** — le terminal et le bot Telegram partagent le même quota Groq mais pas ce compteur ; une pause peut bloquer le thread jusqu'à 60 s.
 
@@ -192,7 +192,7 @@ Joint un fichier **texte ou PDF** au prompt système (bloc « Fichier joint »),
 /file ~/livre.txt liste les chapitres du texte              # plan détecté dans tout le fichier
 /file ~/livre.txt                                           # (puis, message suivant :)
 que raconte le chapitre 8 ?                                 # section « 8. » lue et injectée
-/file ~/Ecritures_Livre/histoire.pdf que raconte le §2 ?     # PDF : texte extrait, section « §2 » retrouvée
+/file ~/Ecritures_Livre/histoire.pdf que raconte le §2 ?    # PDF : texte extrait, section « §2 » retrouvée
 /file "~/mon dossier/notes.txt"                             # chemin avec espaces : guillemets
 /file                                                       # affiche le fichier joint (ou l'usage)
 /file clear                                                 # détache (aussi : off, none)
@@ -392,8 +392,8 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/help`                      | Affiche toutes les commandes disponibles                                                                                                                                    |
 | `/model [1-3]`               | Change le modèle Groq (sans argument : affiche la liste)                                                                                                                    |
 | `/user <prénom>`             | Change le prénom utilisé par l'agent                                                                                                                                        |
-| `/quota`                     | Tokens (60 s et 24 h glissantes) et requêtes (24 h) par modèle, face aux quotas |
-| `/tokens <n>`                | Change le nombre max de tokens de réponse (plafonné à 2 000 sur les modèles ≤ 8k tokens/min) |
+| `/quota`                     | Tokens (60 s et 24 h glissantes) et requêtes (24 h) par modèle, face aux quotas                                                                                             |
+| `/tokens <n>`                | Change le nombre max de tokens de réponse (plafonné à 2 000 sur les modèles ≤ 8k tokens/min)                                                                                |
 | `/temp <val>`                | Change la température (0.0–1.0)                                                                                                                                             |
 | `/history_size <n>`          | Change le nombre de messages conservés en mémoire courte                                                                                                                    |
 | `/clear [mem\|clavier\|all]` | Sans argument ou `mem` : efface la mémoire courte (utile après une erreur 429 rate limit). `clavier` : vide l'historique clavier ↑↓ (`.readline_history`). `all` : les deux |
@@ -422,35 +422,35 @@ Déclenché automatiquement par `/tool cron add` (manuel) ou par l'outil `cron_a
 | `/delete <n ou n°>` | Supprime un skill             |
 
 ### Outils, skills & vision
-| Commande                                           | Description                                                                                                                                              |
-|---                                                 |---                                                                                                                                                       |
-| `/tool date`                                       | Affiche la date et l'heure                                                                                                                               |
-| `/tool calc <expr>`                                | Calcule une expression mathématique                                                                                                                      |
-| `/tool shell <cmd>`                                | Exécute une commande shell en liste blanche (df, free, uptime, uname, ls, pwd, date, cat, echo, hostname, whoami, top, ps, du, lscpu, vcgencmd, python3) |
-| `/tool read <chemin>`                              | Lit un fichier (chemins sensibles bloqués)                                                                                                               |
-| `/tool write <fichier>`                            | Écrit dans le workspace (avec confirmation)                                                                                                              |
-| `/tool write_skill <nom> :: <frontmatter+contenu>` | Crée/màj un skill (autonome, garde-fous …)                                                                                                               |
-| `/tool add_theme_keyword <thème> :: <mot-clé>`     | Ajoute un mot-clé de thème (autonome)                                                                                                                    |
-| `/tool audit_autonomy [n]`                         | Liste les n dernières écritures autonomes (défaut 10)                                                                                                    |
-| `/tool run <script> [args]`                        | Lance un script pré-approuvé (`emails_scan`, `suivi_timekeeping_omega`) ; `--live` demande confirmation                                                  |
-| `/tool net <hôte>`                                 | Diagnostic réseau ping + TCP 443                                                                                                                         |
-| `/tool notify <msg>`                               | Envoie une notification Telegram (avec confirmation)                                                                                                     |
-| `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)                                                                                                          |
-| `/tools`                                           | Liste les outils disponibles                                                                                                                             |
-| `/image`                                           | Analyse une image (vision, `qwen/qwen3.8-27b`)                                                                                                           |
+| Commande                                           | Description                                                                                                                                                                  |
+|---                                                 |---                                                                                                                                                                           |
+| `/tool date`                                       | Affiche la date et l'heure                                                                                                                                                   |
+| `/tool calc <expr>`                                | Calcule une expression mathématique                                                                                                                                          |
+| `/tool shell <cmd>`                                | Exécute une commande shell en liste blanche (df, free, uptime, uname, ls, pwd, date, cat, echo, hostname, whoami, top, ps, du, lscpu, vcgencmd, python3)                     |
+| `/tool read <chemin>`                              | Lit un fichier (chemins sensibles bloqués)                                                                                                                                   |
+| `/tool write <fichier>`                            | Écrit dans le workspace (avec confirmation)                                                                                                                                  |
+| `/tool write_skill <nom> :: <frontmatter+contenu>` | Crée/màj un skill (autonome, garde-fous …)                                                                                                                                   |
+| `/tool add_theme_keyword <thème> :: <mot-clé>`     | Ajoute un mot-clé de thème (autonome)                                                                                                                                        |
+| `/tool audit_autonomy [n]`                         | Liste les n dernières écritures autonomes (défaut 10)                                                                                                                        |
+| `/tool run <script> [args]`                        | Lance un script pré-approuvé (`emails_scan`, `suivi_timekeeping_omega`) ; `--live` demande confirmation                                                                      |
+| `/tool net <hôte>`                                 | Diagnostic réseau ping + TCP 443                                                                                                                                             |
+| `/tool notify <msg>`                               | Envoie une notification Telegram (avec confirmation)                                                                                                                         |
+| `/tool cron <expr>`                                | Planifie une tâche headless (avec confirmation)                                                                                                                              |
+| `/tools`                                           | Liste les outils disponibles                                                                                                                                                 |
+| `/image`                                           | Analyse une image (vision, `qwen/qwen3.8-27b`)                                                                                                                               |
 | `/file <chemin> [question]`                        | Joint un fichier texte ou PDF au prompt (jusqu'à `/file clear`) : extraits pertinents, section « chapitre N », plafond selon le modèle, bascule de modèle affichée si besoin |
-| `/scan <question> [--out nom.txt] [--restart]`     | Lit **tout** le fichier joint par tranches et fusionne (ex. `/scan liste tous les personnages --out Personnages.txt`), reprise automatique |
+| `/scan <question> [--out nom.txt] [--restart]`     | Lit **tout** le fichier joint par tranches et fusionne (ex. `/scan liste tous les personnages --out Personnages.txt`), reprise automatique                                   |
 
 
 ## Limites Groq (version gratuite)
-| Limite              | Détail                                                                                                        |
-|---                  |---                                                                                                            |
-| Tokens/minute (TPM) | 8k (GPT-OSS 120B), 8k (GPT-OSS 20B), 8k (Qwen 3.8 27B) — **quota séparé par modèle** ; l'agent corrige ces valeurs lui-même d'après les erreurs Groq                         |
-| Erreur 429 / 413    | L'agent patiente ≤ 20 s puis retente, ou bascule sur `gpt-oss-20b` ; `/clear` seulement si l'historique gonfle |
-| Suivi en direct     | Ligne `📊 modèle : N tokens · fenêtre 60 s : X/Y` après chaque appel                                           |
-| RPM / RPD           | 30 requêtes/minute · **1 000 requêtes/jour par modèle** (GPT-OSS 120B et 20B)                                   |
-| TPD                 | **200 000 tokens/jour par modèle** (suivi estimé : `/quota`, `/doctor`)                                         |
-| Suivi officiel      | https://console.groq.com/settings/limits                                                                       |
+| Limite              | Détail                                                                                                                                                     |
+|---                  |---                                                                                                                                                         |
+| Tokens/minute (TPM) | 8k (GPT-OSS 120B), 8k (GPT-OSS 20B), 8k (Qwen 3.8 27B) — **quota séparé par modèle** ; l'agent corrige ces valeurs lui-même d'après les erreurs Groq       |
+| Erreur 429 / 413    | L'agent patiente ≤ 20 s puis retente, ou bascule sur `gpt-oss-20b` ; `/clear` seulement si l'historique gonfle                                             |
+| Suivi en direct     | Ligne `📊 modèle : N tokens · fenêtre 60 s : X/Y` après chaque appel                                                                                       |
+| RPM / RPD           | 30 requêtes/minute · **1 000 requêtes/jour par modèle** (GPT-OSS 120B et 20B)                                                                              |
+| TPD                 | **200 000 tokens/jour par modèle** (suivi estimé : `/quota`, `/doctor`)                                                                                    |
+| Suivi officiel      | https://console.groq.com/settings/limits                                                                                                                   |
 
 ## Fichiers à ne pas versionner
 Créer un fichier `.gitignore` à la racine du projet :
@@ -475,4 +475,4 @@ __pycache__/
 
 ## Auteur
 **Jean-François Brunet** — [JFBConseils](https://github.com/JeanFrancoisBrunet)
-Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Septembre 2026*
+Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Octobre 2026*
