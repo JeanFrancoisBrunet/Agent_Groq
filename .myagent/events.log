@@ -1,0 +1,45 @@
+2026-07-05 08:43:43 [doctor_run] ok=16 warn=0 fail=0
+2026-07-14 13:10:56 [doctor_run] ok=16 warn=0 fail=0
+2026-07-18 13:13:04 [doctor_run] ok=16 warn=0 fail=0
+2026-07-19 20:46:39 [doctor_run] ok=16 warn=0 fail=0
+2026-07-21 16:10:55 [doctor_run] ok=16 warn=0 fail=0
+2026-07-24 16:58:41 [doctor_run] ok=17 warn=0 fail=0
+2026-07-25 20:34:17 [skill_written] minitab_18.md (2612 car.)
+2026-07-26 13:08:03 [skill_written] ellistat_guide.md (2551 car.)
+2026-08-02 07:50:52 [skill_written] gestion_emails_outlook.md (3093 car.)
+2026-08-03 10:47:59 [skill_written] institut_lean_france.md (1909 car.)
+2026-08-04 08:43:11 [skill_written] biographie_bach.md (2251 car.)
+2026-08-13 13:08:12 [doctor_run] ok=17 warn=0 fail=0
+2026-08-14 18:01:30 [doctor_run] ok=17 warn=0 fail=0
+2026-08-18 07:20:33 [doctor_run] ok=17 warn=0 fail=0
+2026-08-22 13:06:51 [doctor_run] ok=17 warn=0 fail=0
+2026-08-28 10:57:04 [doctor_run] ok=17 warn=0 fail=0
+2026-08-29 08:46:59 [doctor_run] ok=17 warn=0 fail=0
+2026-09-04 17:40:43 [doctor_run] ok=17 warn=0 fail=0
+2026-09-06 10:22:19 [skill_written] activer_models_groq_gratuits.md (2025 car.)
+2026-09-13 11:47:27 [doctor_run] ok=17 warn=0 fail=0
+2026-09-16 22:13:06 [doctor_run] ok=17 warn=0 fail=0
+2026-09-18 18:26:17 [skill_written] mise_en_cache_groq.md (2990 car.)2026-09-20 10:58:50 [doctor_run] ok=17 warn=0 fail=0
+2026-09-20 13:41:43 [exchange_vector_delete] id=exchange:39 text='Q: bonjour kimi-k2 R: ⚠️  Modèle introuvable : moonshotai/kimi-k2-instruct — tape /model'
+2026-09-20 13:42:10 [exchange_vector_delete] id=exchange:35 text='Q: quel est la version de ce modèle de LLM ? R: ⚠️  Modèle introuvable : moonshotai/kimi-k2-instruct — tape /model'
+2026-09-20 13:44:09 [exchange_vector_delete] id=exchange:118 text="Q: Perdu c'est une machine de remplissage de paillettes R: **ISEVO** n’est pas une machine de remplissage de paillettes\u202f; c’est le **générateur d’azote liquide** d’IMV Technologies.  \n\n| **Aspect** | **ISEVO (générateur LN₂)** |\n|------------|----------------"
+2026-09-20 13:44:55 [exchange_vector_delete] id=exchange:123 text='Q: Condense ce skill Minitab 18 R: '
+2026-09-20 14:47:32 [file_vector_delete] id=file:test.txt text='salut depuis telegram'
+2026-09-22 20:49:08 [doctor_run] ok=17 warn=0 fail=02026-09-22 22:22:19 [exchange_vector_delete] id=exchange:116 text="Q: Qu'est ce qu'une isevo ? R: **ISEVO** est une marque française spécialisée dans les véhicules électriques légers, principalement les trottinettes et scooters électriques destinés à la mobilité urbaine et à la logistique du «\u202fder"
+2026-09-22 22:26:52 [doctor_fix] ok=16 warn=1 fail=0
+2026-09-22 22:45:42 [doctor_run] ok=17 warn=0 fail=02026-09-23 12:49:47 [doctor_run] ok=17 warn=0 fail=0
+2026-09-23 13:09:34 [doctor_run] ok=17 warn=0 fail=0
+2026-09-26 19:40:11 [doctor_run] ok=17 warn=0 fail=0
+2026-09-27 20:44:54 [groq_error] ⚠  Erreur Groq (après 1 tentative(s)) : Error code: 400 - {'error': {'message': 'Tool choice is none, but model called a tool', 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "repo_browser.write", "arguments": {\n  "path": "plan_de_travail.txt",\n  "content": "1. Prologue\\n2. La jeunesse, l\'adolescence, l\'éducation, le jeu d\'échecs\\n3. Les débuts dans la vie active – 4D (définir, décider, diriger et démêler)\\n4. La Corée du Sud, le jeu de Go (les règles de bases)\\n5. L\'Irlande, l\'enseignement, le jeu des allumettes (création), le Kaizen\\n6. Après 30 années de vie professionnelle, l\'écriture du Joueur de flux (à la chaumière)\\n   - Crises – sanitaire et économique / Perte de sens / Grande démission\\n7. Lean Summit – juin 2022\\n8. Recherche d\'un nouvel emploi à près de 55 ans – LBO\\n   - Diagnostic IMV Technologies : Matrice Produits/Process – VSM – MSD – Capacitaires\\n9. Convaincre d\'un pilotage : Stratégique (PIC), Tactique (PDP) & Opérationnel (Plan de charge)\\n   - Mise en œuvre (4F)\\n10. Enseigner : un second métier, une passion (anecdote ChatGPT)\\n11. Rachat de petites entreprises pour devenir une ETI, Départ du CEO, Vente du LBO et rachat par Meck (JAN)\\n12. Épilogue – Création d\'une micro-entreprise pour aider les autres (la transmission)"\n}}'}}
+2026-09-28 20:32:08 [groq_error] ⚠  Limite Groq atteinte — quota tokens/minute atteint ; try again in 26.6475s
+2026-09-28 22:38:17 [doctor_run] ok=16 warn=1 fail=0 | 🟡 Journal d'événements : 3 événement(s) récent(s) à surveiller — dernier : [groq_error] ⚠  Limite Groq atteinte — quota tokens/minute atteint ; try again in 26.6475s
+2026-09-28 22:38:35 [doctor_fix] ok=16 warn=1 fail=0
+2026-09-28 22:44:59 [doctor_run] ok=17 warn=0 fail=0
+2026-09-29 22:05:31 [doctor_run] ok=17 warn=0 fail=0
+2026-09-29 22:08:13 [groq_error] ⚠  Réponse vide du modèle — reformule ou réessaie.
+2026-09-29 22:08:37 [groq_error] ⚠  Requête trop volumineuse pour ce modèle (413) — détache le fichier (/file clear) ou essaie /model 2 (30k tokens/min).
+2026-10-01 22:26:26 [doctor_run] ok=17 warn=0 fail=0
+2026-10-01 22:45:15 [doctor_run] ok=17 warn=0 fail=0
+2026-10-01 23:03:35 [doctor_run] ok=17 warn=0 fail=0
+2026-10-01 23:05:15 [doctor_run] ok=17 warn=0 fail=0
+2026-10-02 20:20:24 [doctor_run] ok=17 warn=0 fail=0

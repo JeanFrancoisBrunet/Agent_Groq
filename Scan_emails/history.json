@@ -1,21 +1,5 @@
 [
   {
-    "message_id": "<623626161338778.1790161439.111459255218506-openerp-reply_to@7190d82e81b6>",
-    "account": "outlook",
-    "folder": "À trier",
-    "action": "classé via groq → À trier",
-    "is_spam": false,
-    "ts": "2026-09-23T17:00:09+00:00"
-  },
-  {
-    "message_id": "<NM6C7759D7402E3962DPFO_PROD_DIF1@infos.orange.fr>",
-    "account": "orange",
-    "folder": "Orange",
-    "action": "classé via groq → Orange",
-    "is_spam": false,
-    "ts": "2026-09-23T17:00:09+00:00"
-  },
-  {
     "message_id": "<519704963.5380001.1790176485186@ltx1-app42210.prod.linkedin.com>",
     "account": "orange",
     "folder": "À trier",
@@ -798,5 +782,21 @@
     "action": "classé via groq → À trier",
     "is_spam": false,
     "ts": "2026-10-03T09:00:08+00:00"
+  },
+  {
+    "message_id": "<6ac0e2a046e1e_eb11f027513e@sharedworker-859c594d75-554rb.mail>",
+    "account": "orange",
+    "folder": "Raspberry/GitHub",
+    "action": "classé via groq → Raspberry/GitHub",
+    "is_spam": false,
+    "ts": "2026-10-03T17:00:07+00:00"
+  },
+  {
+    "message_id": "<NM6A9B0E87A0185BA74laposte_mid_prod1@lidentitenumerique.info.laposte.fr>",
+    "account": "orange",
+    "folder": "Baron-Odon/La Poste",
+    "action": "classé via règle → Baron-Odon/La Poste",
+    "is_spam": false,
+    "ts": "2026-10-03T17:00:07+00:00"
   }
 ]
