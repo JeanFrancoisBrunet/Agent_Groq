@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-.env
 *.env
 *.log
 *.lock
@@ -10,16 +9,21 @@ __pycache__/
 *.onnx
 
 .groq_config
-history.json.lock
 .msal_token_cache.json
 .secrets.env
+
 Scan_emails/.msal_token_cache.json
 Scan_emails/.secrets.env 
-.myagent/token_usage.json
-.myagent/vectors.json
+
 .myagent/events.log
 .myagent/history.json
+.myagent/token_usage.json
+.myagent/vectors.json
+
 .myagent/*.bak*
+
+history.json
+history.json.lock
 
 Recherche_immo/*.log
 Scan_emails/*.log
