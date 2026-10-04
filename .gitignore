@@ -25,6 +25,6 @@ Scan_emails/.secrets.env 
 history.json
 history.json.lock
 
-Recherche_immo/*.log
-Scan_emails/*.log
-Timekeeping/*.log
+Recherche_immo/
+Scan_emails/
+Timekeeping/
