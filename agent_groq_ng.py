@@ -1803,25 +1803,31 @@ class _TextExtractor(HTMLParser):
                               r"opacity\s*:\s*0(?!\.?\d)|height\s*:\s*0(?!\.?\d)[^;]*overflow\s*:\s*hidden", re.I)
     # classes/ids de « décor » (Wikipédia et sites courants) : listes de langues, menus, tables des matières,
     # liens « modifier », notes de bas de page, bandeaux d'avertissement, cookies, fil d'Ariane…
-    HIDE_CLASS = re.compile(r"(?:^|[\s_-])(?:interlanguage-link\w*|navbox\w*|vector-menu\w*|vector-toc\w*|"
-                            r"vector-page-toolbar\w*|vector-sticky\w*|mw-editsection\w*|noprint|mw-jump-link|catlinks|"
-                            r"printfooter|sidebar\w*|reflist|references|mw-references-wrap|reference|cite_ref\w*|"
-                            r"sistersitebox|bandeau\w*|ambox|mw-cite-backlink|toc|cookie\w*|breadcrumb\w*|"
-                            r"skip-link|sr-only|visually-hidden|p-lang\w*|mw-hidden-catlinks|portal)(?:$|[\s_-])", re.I)
+    HIDE_CLASS = re.compile(r"(?:interlanguage-link\S*|navbox\S*|vector-menu\S*|vector-toc\S*|vector-page-toolbar\S*|"
+                            r"vector-sticky\S*|mw-editsection\S*|noprint|mw-jump-link|catlinks|printfooter|sidebar|"
+                            r"reflist|references|mw-references-wrap|reference|cite_ref\S*|sistersitebox|bandeau\S*|ambox|"
+                            r"mw-cite-backlink|toc|cookie\S*|breadcrumb\S*|skip-link|sr-only|visually-hidden|p-lang\S*|"
+                            r"mw-hidden-catlinks|portal)", re.I)     # appliqué à chaque classe/id ENTIER (fullmatch)
+    NEVER_HIDE = {"html", "body", "head", "main", "article"}          # conteneurs : une classe « décor » sur <html>/<body> ne doit jamais masquer la page
+    NEVER_HIDE_IDS = {"content", "bodycontent", "mw-content-text", "mw-content-container", "main-content", "main"}
     HIDE_ROLE  = {"navigation", "banner", "contentinfo", "complementary", "search"}
-    def __init__(self):
+    def __init__(self, lenient: bool = False):
         super().__init__(convert_charrefs=True)
+        self.lenient = lenient      # repli : ignore classes/rôles « décor » (page dont le balisage masquerait tout)
         self.stack, self.out, self.title, self.in_title, self.skip = [], [], "", False, 0
         self.row_depth, self.cells = 0, [[]]
     def _hidden(self, tag, attrs):
         d = dict(attrs)
         if tag in self.SKIP or "hidden" in d or (d.get("aria-hidden") or "").lower() == "true":
             return True
+        if bool(self.HIDDEN_STYLE.search(d.get("style") or "")):
+            return True
+        if self.lenient or tag in self.NEVER_HIDE or (d.get("id") or "").lower() in self.NEVER_HIDE_IDS:
+            return False
         if (d.get("role") or "").lower() in self.HIDE_ROLE:
             return True
-        if self.HIDE_CLASS.search(f"{d.get('class') or ''} {d.get('id') or ''}"):
-            return True
-        return bool(self.HIDDEN_STYLE.search(d.get("style") or ""))
+        tokens = (d.get("class") or "").split() + ([d["id"]] if d.get("id") else [])
+        return any(self.HIDE_CLASS.fullmatch(t) for t in tokens)
     def _emit(self, txt):
         if self.row_depth > 0:
             self.cells[-1].append(" " if (txt.strip() == "" and "\n" in txt) else txt)
@@ -1915,15 +1921,22 @@ def _clean_web_text(text: str) -> str:
         out.append(lines[k]); k += 1
     return re.sub(r"\n{3,}", "\n\n", "\n\n".join(out)).strip()
 
-def _html_to_text(html: str) -> tuple:
-    """(titre, texte) d'une page HTML : sans scripts, styles, éléments cachés ni commentaires."""
-    p = _TextExtractor()
+def _html_to_text(html: str, lenient: bool = False) -> tuple:
+    """(titre, texte) d'une page HTML : sans scripts, styles, éléments cachés ni commentaires.
+    Si le nettoyage « décor » ne laisse presque rien (balisage inhabituel), on recommence en mode
+    indulgent plutôt que de déclarer la page vide."""
+    p = _TextExtractor(lenient)
     try:
         p.feed(html)
         p.close()
     except Exception:
         pass
-    return _clean_untrusted_text(p.title)[:200], _clean_web_text(_clean_untrusted_text("".join(p.out)))
+    title, text = _clean_untrusted_text(p.title)[:200], _clean_web_text(_clean_untrusted_text("".join(p.out)))
+    if len(text) < 200 and not lenient:
+        t2, x2 = _html_to_text(html, lenient=True)
+        if len(x2) > len(text):
+            return t2 or title, x2
+    return title, text
 
 def _web_get(url: str, accept: str = "text/html,text/plain,application/pdf;q=0.9,*/*;q=0.1") -> tuple:
     """(url_finale, content_type, octets, tronqué). Lève _WebError."""
