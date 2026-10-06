@@ -5135,6 +5135,7 @@ GITHUB_SENSITIVE_NAMES = (".groq_config", ".telegram_config", ".secrets.env", "*
                           "long_mem.json", "history.json", "vectors.json", "token_usage.json", "events.log",
                           ".readline_history", "id_rsa", "id_ed25519", "*.pem", "*.key")
 GITHUB_SENSITIVE_DIRS  = (".myagent/sessions/", ".myagent/workspace/")
+GITHUB_VENV_PREFIXES   = ("venv/", ".venv/", "env/", "node_modules/")
 
 def _github_repo_list() -> list:
     """Dépôts surveillés : liste `for p in … do` de la fonction github() de ~/.bashrc, sinon GITHUB_REPOS_DEFAULT."""
@@ -5195,8 +5196,13 @@ def _github_repo_status(name: str) -> dict:
             if not f:
                 continue
             base = f.rsplit("/", 1)[-1]
+            if f.startswith(GITHUB_VENV_PREFIXES) or "/site-packages/" in f or "/node_modules/" in f:
+                st["venv"] = st.get("venv", 0) + 1          # environnement virtuel/dépendances : jamais un « secret » (ex. certifi/cacert.pem)
+                continue
             if any(fnmatch.fnmatch(base, pat) for pat in GITHUB_SENSITIVE_NAMES) or any(d in f for d in GITHUB_SENSITIVE_DIRS):
                 st["sensitive"].append(f)
+    if st.get("venv"):
+        st["warns"].append(f"venv/dépendances suivis par Git ({st['venv']} fichiers) → git rm -r --cached venv + « venv/ » dans .gitignore")
     if st["sensitive"]:
         st["problems"].append(f"{len(st['sensitive'])} fichier(s) sensible(s) suivi(s) : " + ", ".join(st["sensitive"][:3])
                               + (" …" if len(st["sensitive"]) > 3 else "") + "  → git rm --cached + .gitignore")
@@ -5257,6 +5263,22 @@ def show_github() -> list:
         t.add_row(s_["name"], icon, str(s_["dirty"] or ""), str(s_["ahead"] or ""),
                   rich_escape("; ".join(s_["problems"] + s_["warns"])[:90]))
     console.print(t)
+    for s_ in sts:
+        if s_["sensitive"]:
+            console.print(f"\n  [red]❌ {rich_escape(s_['name'])} — fichiers sensibles suivis par Git :[/]")
+            for f in s_["sensitive"][:15]:
+                console.print(f"     • {rich_escape(f)}")
+            if len(s_["sensitive"]) > 15:
+                console.print(f"     … (+{len(s_['sensitive']) - 15})")
+            # regroupe par dossier de premier niveau quand plusieurs fichiers s'y trouvent (ex. .myagent) : une seule commande courte
+            tops = {}
+            for f in s_["sensitive"]:
+                tops.setdefault(f.split("/")[0] if "/" in f else f, []).append(f)
+            cibles_rm = [k if len(v) >= 2 and "/" in v[0] else v[0] for k, v in tops.items()]
+            cmd = f"cd {shlex.quote(str(s_['path']))} && git rm -r --cached " + " ".join(shlex.quote(c) for c in cibles_rm)
+            console.print("  [white dim]Correction (une seule ligne à copier) :[/]")
+            console.print(f"  {rich_escape(cmd)}", soft_wrap=True, highlight=False)
+            console.print("  [white dim]puis ajouter ces chemins au .gitignore, commit et push.[/]")
     return sts
 
 def cmd_github(arg: str) -> None:
