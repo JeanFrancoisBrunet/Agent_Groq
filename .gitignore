@@ -15,12 +15,15 @@ __pycache__/
 Scan_emails/.msal_token_cache.json
 Scan_emails/.secrets.env 
 
+.myagent/.readline_history
 .myagent/events.log
 .myagent/history.json
+.myagent/long_mem.json
 .myagent/token_usage.json
 .myagent/vectors.json
-
+.myagent/workspace
 .myagent/*.bak*
+.myagent/*.lock*
 
 history.json
 history.json.lock
