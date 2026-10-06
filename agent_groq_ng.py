@@ -1938,8 +1938,15 @@ def _html_to_text(html: str, lenient: bool = False) -> tuple:
             return t2 or title, x2
     return title, text
 
+def _normalize_url(url: str) -> str:
+    """Espaces, accents et caractères spéciaux d'une URL tapée à la main (ex. .../wiki/Lean Management,
+    .../wiki/Été) → URL valide : encodage en %XX, sans toucher à ce qui l'est déjà."""
+    url = url.strip()
+    return urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
+
 def _web_get(url: str, accept: str = "text/html,text/plain,application/pdf;q=0.9,*/*;q=0.1") -> tuple:
     """(url_finale, content_type, octets, tronqué). Lève _WebError."""
+    url = _normalize_url(url)
     ok, why = _url_is_safe(url)
     if not ok:
         raise _WebError(why)
@@ -4878,6 +4885,7 @@ def show_help():
         ("/new",          "/new",                                                "Nouvelle session (archive l'ancienne)"),
         ("/sessions",     "/sessions  |  /resume 2",                             "Liste / reprend une session"),
         ("/undo",         "/undo  |  /undo list",                                "Annule le dernier tour"),
+        ("/github",       "/github  |  /github sync [dépôt]",                    "État des dépôts / synchronise"),
         ("/tasks",        "/tasks",                                              "Fonds, cron, /scan, processus"),
         ("/history",      "(lire les échanges)",                                 "Affiche les échanges"),
         ("/history_size", str(MAX_HISTORY),                                      "Nb messages mémoire"),
@@ -5113,6 +5121,182 @@ def _doctor_check_telegram_notify() -> tuple:
     except (KeyError, configparser.Error) as e:
         return ("❌", f"config présente mais invalide — {e}")
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  GITHUB — état des dépôts (/doctor, /github) et synchronisation (/github sync)
+# ══════════════════════════════════════════════════════════════════════════════
+# La liste des dépôts est lue dans la fonction `github()` de ~/.bashrc (une seule source de vérité :
+# ce que la commande `github` du terminal synchronise, l'agent le surveille). À défaut, GITHUB_REPOS_DEFAULT.
+# Diagnostic = lecture seule (aucun fetch, aucun push). /github sync = confirmation O/n, puis le
+# `sync.sh` de chaque dépôt concerné ; un dépôt qui suit un fichier sensible n'est JAMAIS synchronisé.
+GITHUB_PROJECTS_DIR  = Path.home() / "Projects"
+GITHUB_REPOS_DEFAULT = []          # ex. ["Groq_agent", "Bourse"] si ~/.bashrc ne contient pas github()
+GITHUB_GIT_TIMEOUT   = 8           # secondes par commande git
+GITHUB_SENSITIVE_NAMES = (".groq_config", ".telegram_config", ".secrets.env", "*.env", ".msal_token_cache.json",
+                          "long_mem.json", "history.json", "vectors.json", "token_usage.json", "events.log",
+                          ".readline_history", "id_rsa", "id_ed25519", "*.pem", "*.key")
+GITHUB_SENSITIVE_DIRS  = (".myagent/sessions/", ".myagent/workspace/")
+
+def _github_repo_list() -> list:
+    """Dépôts surveillés : liste `for p in … do` de la fonction github() de ~/.bashrc, sinon GITHUB_REPOS_DEFAULT."""
+    try:
+        txt = (Path.home() / ".bashrc").read_text(encoding="utf-8", errors="replace")
+        m = re.search(r"github\s*\(\)\s*\{.*?\bfor\s+\w+\s+in\b(.*?)\bdo\b", txt, re.S)
+        if m:
+            repos = [t for t in re.findall(r"[^\s\\]+", m.group(1)) if t]
+            if repos:
+                return repos
+    except Exception:
+        pass
+    return list(GITHUB_REPOS_DEFAULT)
+
+def _git(path: Path, *args: str) -> tuple:
+    """(code, sortie) d'une commande git dans `path`, sans jamais demander de mot de passe."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
+    try:
+        r = subprocess.run(["git", "-C", str(path), *args], capture_output=True, timeout=GITHUB_GIT_TIMEOUT, env=env)
+        return r.returncode, r.stdout.decode("utf-8", errors="replace")
+    except Exception as e:
+        return 1, f"{type(e).__name__}"
+
+def _github_repo_status(name: str) -> dict:
+    """État d'un dépôt (lecture seule) : modifications, commits à pousser, remote, sync.sh, fichiers sensibles suivis."""
+    import fnmatch
+    path = GITHUB_PROJECTS_DIR / name
+    st = {"name": name, "path": path, "problems": [], "warns": [], "dirty": 0, "ahead": 0, "sensitive": []}
+    if not path.is_dir():
+        st["warns"].append("dossier introuvable"); return st
+    if not (path / ".git").exists():
+        st["warns"].append("pas un dépôt git"); return st
+    code, out = _git(path, "status", "--porcelain")
+    if code == 0:
+        st["dirty"] = len([ln for ln in out.splitlines() if ln.strip()])
+    code, out = _git(path, "rev-list", "--count", "@{upstream}..HEAD")
+    if code == 0 and out.strip().isdigit():
+        st["ahead"] = int(out.strip())
+    else:
+        st["warns"].append("pas de branche suivie (git push -u origin main)")
+    code, url = _git(path, "remote", "get-url", "origin")
+    url = url.strip()
+    if code != 0 or not url:
+        st["warns"].append("pas de remote origin")
+    elif url.startswith("http"):
+        st["warns"].append("remote en HTTPS (mot de passe demandé) — passer en SSH")
+    st["remote"] = url
+    sync = path / "sync.sh"
+    if not sync.is_file():
+        st["warns"].append("sync.sh absent")
+    elif not os.access(sync, os.X_OK):
+        st["warns"].append("sync.sh non exécutable (chmod +x)")
+    if not (path / ".gitignore").is_file():
+        st["warns"].append(".gitignore absent")
+    code, out = _git(path, "ls-files", "-z")
+    if code == 0:
+        for f in out.split("\0"):
+            if not f:
+                continue
+            base = f.rsplit("/", 1)[-1]
+            if any(fnmatch.fnmatch(base, pat) for pat in GITHUB_SENSITIVE_NAMES) or any(d in f for d in GITHUB_SENSITIVE_DIRS):
+                st["sensitive"].append(f)
+    if st["sensitive"]:
+        st["problems"].append(f"{len(st['sensitive'])} fichier(s) sensible(s) suivi(s) : " + ", ".join(st["sensitive"][:3])
+                              + (" …" if len(st["sensitive"]) > 3 else "") + "  → git rm --cached + .gitignore")
+    return st
+
+def _github_all_status() -> list:
+    repos = _github_repo_list()
+    if not repos:
+        return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        return list(ex.map(_github_repo_status, repos))
+
+def _github_ssh_ok() -> tuple:
+    """Test d'authentification SSH vers GitHub (5 s max, jamais interactif)."""
+    try:
+        r = subprocess.run(["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=accept-new",
+                            "git@github.com"], capture_output=True, timeout=10)
+        msg = (r.stderr + r.stdout).decode("utf-8", errors="replace")
+        if "successfully authenticated" in msg:
+            return True, ""
+        return False, msg.strip().splitlines()[-1][:100] if msg.strip() else "pas de réponse"
+    except Exception as e:
+        return False, type(e).__name__
+
+def _doctor_check_github() -> tuple:
+    if not _github_repo_list():
+        return ("✅", "non configuré (aucune fonction github() dans ~/.bashrc)")
+    if not GITHUB_PROJECTS_DIR.is_dir():
+        return ("🟡", f"dossier {GITHUB_PROJECTS_DIR} introuvable")
+    sts = _github_all_status()
+    bad  = [s_ for s_ in sts if s_["problems"]]
+    todo = [s_ for s_ in sts if (s_["dirty"] or s_["ahead"]) and not s_["problems"]]
+    warn = [s_ for s_ in sts if s_["warns"] and s_ not in todo and s_ not in bad]
+    if bad:
+        return ("❌", "; ".join(f"{s_['name']} : {s_['problems'][0]}" for s_ in bad[:2]) + " — /github pour le détail")
+    ssh_ok, why = _github_ssh_ok() if any(s_.get("remote", "").startswith("git@") for s_ in sts) else (True, "")
+    if not ssh_ok:
+        return ("🟡", f"SSH GitHub non authentifié ({why})")
+    if todo:
+        return ("🟡", f"{len(todo)}/{len(sts)} à synchroniser : " + ", ".join(s_["name"].split("/")[-1] for s_ in todo[:5])
+                + (" …" if len(todo) > 5 else "") + " — /github sync")
+    if warn:
+        return ("🟡", f"{len(warn)} dépôt(s) avec avertissement ({warn[0]['name']} : {warn[0]['warns'][0]}) — /github")
+    return ("✅", f"{len(sts)} dépôts à jour, aucun fichier sensible suivi")
+
+def show_github() -> list:
+    """/github : tableau d'état (lecture seule). Retourne les états pour /github sync."""
+    sts = _github_all_status()
+    if not sts:
+        console.print("  [yellow]Aucun dépôt connu : ajoute la fonction github() à ~/.bashrc "
+                      "ou renseigne GITHUB_REPOS_DEFAULT.[/]")
+        return []
+    t = Table(title="Dépôts GitHub", box=rbox.SIMPLE_HEAVY)
+    t.add_column("Dépôt"); t.add_column("", width=2); t.add_column("Modif.", justify="right")
+    t.add_column("À pousser", justify="right"); t.add_column("Remarques")
+    for s_ in sts:
+        icon = "❌" if s_["problems"] else ("🟡" if (s_["dirty"] or s_["ahead"] or s_["warns"]) else "✅")
+        t.add_row(s_["name"], icon, str(s_["dirty"] or ""), str(s_["ahead"] or ""),
+                  rich_escape("; ".join(s_["problems"] + s_["warns"])[:90]))
+    console.print(t)
+    return sts
+
+def cmd_github(arg: str) -> None:
+    """/github (état) · /github sync [dépôt] (confirmation, puis sync.sh des dépôts concernés)."""
+    parts = arg.split()
+    sts = show_github()
+    if not parts or parts[0].lower() != "sync" or not sts:
+        console.print("  [white dim]/github sync [dépôt] : synchronise les dépôts modifiés (après confirmation).[/]")
+        return
+    only = parts[1] if len(parts) > 1 else None
+    cibles, ignores = [], []
+    for s_ in sts:
+        if only and only.lower() not in s_["name"].lower():
+            continue
+        if s_["problems"]:
+            ignores.append(f"{s_['name']} : {s_['problems'][0]}")
+        elif (s_["dirty"] or s_["ahead"]) and (s_["path"] / "sync.sh").is_file() and os.access(s_["path"] / "sync.sh", os.X_OK):
+            cibles.append(s_)
+    for i in ignores:
+        console.print(f"  [red]⛔ Non synchronisé — {rich_escape(i)}[/]")
+    if not cibles:
+        console.print("  [green]Rien à synchroniser.[/]\n")
+        return
+    console.print("  [yellow]🤖 Synchroniser : " + ", ".join(s_["name"] for s_ in cibles) + "[/]")
+    if input(make_prompt_plain("Lancer les sync.sh ? [O/n]")).strip().lower() not in ("", "o", "oui", "y", "yes"):
+        console.print("  [white dim]Annulé.[/]\n")
+        return
+    for s_ in cibles:
+        console.print(f"\n  [bold]===== {rich_escape(s_['name'])} =====[/]")
+        try:
+            r = subprocess.run(["./sync.sh"], cwd=str(s_["path"]), capture_output=True, timeout=180,
+                               env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+            out = (r.stdout + r.stderr).decode("utf-8", errors="replace").strip().splitlines()
+            for ln in out[-6:]:
+                console.print(f"  {rich_escape(ln)}")
+        except Exception as e:
+            console.print(f"  [red]❌ {type(e).__name__} : {rich_escape(str(e)[:100])}[/]")
+    log_event("github_sync", ", ".join(s_["name"] for s_ in cibles))
+    console.print()
+
 def get_doctor_checks(skills_index: list) -> list:
     """Construit la liste des vérifications de /doctor, sans aucun affichage.
     Renvoyée sous forme [(label, (icone, detail)), ...] pour être réutilisée
@@ -5135,6 +5319,7 @@ def get_doctor_checks(skills_index: list) -> list:
         ("Journal d'événements",      _doctor_check_events_log()),
         ("Écritures autonomes",       _doctor_check_autonomous_writes()),
         ("Notify (Telegram)",         _doctor_check_telegram_notify()),
+        ("GitHub (dépôts)",           _doctor_check_github()),
     ]
 
 def run_doctor(skills_index: list):
@@ -5529,6 +5714,8 @@ def handle_command(cmd: str, skills_index: list) -> list:
         show_help()
     elif command == "/config":
         show_config()
+    elif command == "/github":
+        cmd_github(rest)
     elif command == "/doctor":
         if rest.strip().lower() in ("-fix", "--fix", "fix"):
             skills_index = run_doctor_fix(skills_index)
