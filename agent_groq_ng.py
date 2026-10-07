@@ -2006,6 +2006,56 @@ def _web_fetch(url: str) -> dict:
         raise _WebError("page vide après extraction (page dynamique en JavaScript, ou accès refusé)")
     return {"url": final, "title": title, "text": text, "truncated": truncated, "ctype": ctype}
 
+_WIKI_URL_RE = re.compile(r"^https?://([a-z\-]+(?:\.m)?\.wikipedia\.org)/wiki/([^?#]+)", re.I)
+
+def _wiki_api(host: str, **params) -> dict:
+    """Appel à l'API MediaWiki (JSON), via _web_get : mêmes garde-fous réseau que les pages."""
+    q = urllib.parse.urlencode({**params, "format": "json", "utf8": 1})
+    _u, _c, raw, _cut, _cs = _web_get(f"https://{host}/w/api.php?{q}", accept="application/json")
+    return json.loads(raw.decode("utf-8", errors="replace"))
+
+def _wiki_resolve(url: str):
+    """URL Wikipédia /wiki/<terme> en 404 → (url_du_bon_article, titre) ou None.
+    Essaie le titre exact (casse, redirections), puis la recherche plein texte ; si rien, retire le dernier
+    mot et recommence (« lean sigma » → « Lean Six Sigma », « six sigma » → « Six Sigma »)."""
+    m = _WIKI_URL_RE.match(url)
+    if not m:
+        return None
+    host, term = m.group(1), urllib.parse.unquote(m.group(2)).replace("_", " ").strip()
+    words = term.split()
+    for n in range(len(words), max(0, len(words) - 4), -1):
+        q = " ".join(words[:n])
+        try:
+            d = _wiki_api(host, action="query", titles=q, redirects=1)
+            pages = (d.get("query") or {}).get("pages") or {}
+            title = next((p.get("title") for p in pages.values() if "missing" not in p and "invalid" not in p), None)
+            if not title:
+                d = _wiki_api(host, action="query", list="search", srsearch=q, srlimit=1, srnamespace=0)
+                hits = (d.get("query") or {}).get("search") or []
+                title = hits[0]["title"] if hits else None
+        except (_WebError, ValueError, KeyError):
+            return None
+        if title:
+            return f"https://{host}/wiki/" + urllib.parse.quote(title.replace(" ", "_"), safe="_(),'!*~-."), title
+    return None
+
+def _web_fetch_smart(url: str) -> tuple:
+    """_web_fetch + rattrapage Wikipédia : si l'article n'existe pas sous ce nom exact (404), retrouve le bon
+    titre quels que soient les mots associés. Retourne (page, note) ; la note est vide si l'URL était la bonne."""
+    try:
+        return _web_fetch(url), ""
+    except _WebError as e:
+        m = _WIKI_URL_RE.match(_normalize_url(url))
+        if not m or "HTTP 404" not in str(e):
+            raise
+        term = urllib.parse.unquote(m.group(2)).replace("_", " ")
+        found = _wiki_resolve(_normalize_url(url))
+        if not found:
+            raise _WebError(f"{e} — aucune page Wikipédia proche de « {term} »")
+        new_url, title = found
+        page = _web_fetch(new_url)
+        return page, f"🔎 « {term} » n'existe pas tel quel sur Wikipédia → page la plus proche : « {title} »"
+
 class _DDGParser(HTMLParser):
     """Résultats de https://html.duckduckgo.com/html/ : liens class=result__a, extraits result__snippet."""
     def __init__(self):
@@ -2190,7 +2240,7 @@ def tool_web_fetch(args: str, synthesize: bool = False) -> str:
     if not re.match(r"^[a-z]+://", url, re.I):
         url = "https://" + url
     try:
-        page = _web_fetch(url)
+        page, wnote = _web_fetch_smart(url)
     except _WebError as e:
         return f"❌ Page illisible ({url}) : {e}"
     _WEB_TURN["used"] = True
@@ -2201,8 +2251,8 @@ def tool_web_fetch(args: str, synthesize: bool = False) -> str:
     if synthesize:
         synth = _web_summarize(page["title"], page["url"], page["text"], focus)
         if synth:
-            return _wrap_untrusted(page["url"], f"{page['title'] or ''}\nSynthèse :\n{synth}\n{note}".strip())
-    return _wrap_untrusted(page["url"], digest + note)
+            return (wnote + "\n" if wnote else "") + _wrap_untrusted(page["url"], f"{page['title'] or ''}\nSynthèse :\n{synth}\n{note}".strip())
+    return (wnote + "\n" if wnote else "") + _wrap_untrusted(page["url"], digest + note)
 
 def browse_to_attachment(url: str) -> tuple:
     """/browser <url> : page → texte → fichier joint (mêmes extraits pertinents, sections et /scan
@@ -2211,7 +2261,7 @@ def browse_to_attachment(url: str) -> tuple:
     if not re.match(r"^[a-z]+://", url, re.I):
         url = "https://" + url
     try:
-        page = _web_fetch(url)
+        page, wnote = _web_fetch_smart(url)
     except _WebError as e:
         return False, f"Page illisible : {e}"
     u = urllib.parse.urlsplit(page["url"])
@@ -2219,7 +2269,7 @@ def browse_to_attachment(url: str) -> tuple:
     _attached_file = {"name": name[:60], "path": page["url"], "text": page["text"],
                       "truncated": False, "web": True}
     log_event("browser", page["url"][:200])
-    msg = f"{page['title'] or name} : {len(page['text'])} caractères lus"
+    msg = (wnote + "\n  " if wnote else "") + f"{page['title'] or name} : {len(page['text'])} caractères lus"
     if page["truncated"]:
         msg += f" (page tronquée à {WEB_MAX_CHARS} car.)"
     if len(page["text"]) > _attachment_char_limit():
@@ -5136,6 +5186,7 @@ GITHUB_SENSITIVE_NAMES = (".groq_config", ".telegram_config", ".secrets.env", "*
                           ".readline_history", "id_rsa", "id_ed25519", "*.pem", "*.key")
 GITHUB_SENSITIVE_DIRS  = (".myagent/sessions/", ".myagent/workspace/")
 GITHUB_VENV_PREFIXES   = ("venv/", ".venv/", "env/", "node_modules/")
+GITHUB_VENV_WARN       = False   # False : venv suivi = simple note (pas de 🟡) ; True : avertissement dans /github et /doctor
 
 def _github_repo_list() -> list:
     """Dépôts surveillés : liste `for p in … do` de la fonction github() de ~/.bashrc, sinon GITHUB_REPOS_DEFAULT."""
@@ -5163,7 +5214,7 @@ def _github_repo_status(name: str) -> dict:
     """État d'un dépôt (lecture seule) : modifications, commits à pousser, remote, sync.sh, fichiers sensibles suivis."""
     import fnmatch
     path = GITHUB_PROJECTS_DIR / name
-    st = {"name": name, "path": path, "problems": [], "warns": [], "dirty": 0, "ahead": 0, "sensitive": []}
+    st = {"name": name, "path": path, "problems": [], "warns": [], "notes": [], "dirty": 0, "ahead": 0, "sensitive": []}
     if not path.is_dir():
         st["warns"].append("dossier introuvable"); return st
     if not (path / ".git").exists():
@@ -5197,12 +5248,14 @@ def _github_repo_status(name: str) -> dict:
                 continue
             base = f.rsplit("/", 1)[-1]
             if f.startswith(GITHUB_VENV_PREFIXES) or "/site-packages/" in f or "/node_modules/" in f:
-                st["venv"] = st.get("venv", 0) + 1          # environnement virtuel/dépendances : jamais un « secret » (ex. certifi/cacert.pem)
+                st["venv"] = st.get("venv", 0) + 1
+                st.setdefault("venv_dir", f.split("/")[0] if f.startswith(GITHUB_VENV_PREFIXES) else "venv")          # environnement virtuel/dépendances : jamais un « secret » (ex. certifi/cacert.pem)
                 continue
             if any(fnmatch.fnmatch(base, pat) for pat in GITHUB_SENSITIVE_NAMES) or any(d in f for d in GITHUB_SENSITIVE_DIRS):
                 st["sensitive"].append(f)
     if st.get("venv"):
-        st["warns"].append(f"venv/dépendances suivis par Git ({st['venv']} fichiers) → git rm -r --cached venv + « venv/ » dans .gitignore")
+        msg_v = f"venv/dépendances suivis par Git ({st['venv']} fichiers) : sans risque pour la sécurité, mais alourdit le dépôt"
+        (st["warns"] if GITHUB_VENV_WARN else st["notes"]).append(msg_v)
     if st["sensitive"]:
         st["problems"].append(f"{len(st['sensitive'])} fichier(s) sensible(s) suivi(s) : " + ", ".join(st["sensitive"][:3])
                               + (" …" if len(st["sensitive"]) > 3 else "") + "  → git rm --cached + .gitignore")
@@ -5263,6 +5316,14 @@ def show_github() -> list:
         t.add_row(s_["name"], icon, str(s_["dirty"] or ""), str(s_["ahead"] or ""),
                   rich_escape("; ".join(s_["problems"] + s_["warns"])[:90]))
     console.print(t)
+    for s_ in sts:
+        if s_.get("notes"):
+            d_ = s_.get("venv_dir", "venv")
+            cmd_v = (f"cd {shlex.quote(str(s_['path']))} && git rm -r --cached {shlex.quote(d_)} && echo {shlex.quote(d_ + '/')} >> .gitignore"
+                     f" && git add .gitignore && git commit -m 'ne plus suivre {d_}' && git push")
+            console.print(f"\n  [white dim]ℹ️  {rich_escape(s_['name'])} : {rich_escape('; '.join(s_['notes']))}.[/]")
+            console.print("  [white dim]Pour les retirer de GitHub (ils restent sur ton disque), une seule ligne :[/]")
+            console.print(f"  {rich_escape(cmd_v)}", soft_wrap=True, highlight=False)
     for s_ in sts:
         if s_["sensitive"]:
             console.print(f"\n  [red]❌ {rich_escape(s_['name'])} — fichiers sensibles suivis par Git :[/]")
