@@ -1807,7 +1807,7 @@ class _TextExtractor(HTMLParser):
                             r"vector-sticky\S*|mw-editsection\S*|noprint|mw-jump-link|catlinks|printfooter|sidebar|"
                             r"reflist|references|mw-references-wrap|reference|cite_ref\S*|sistersitebox|bandeau\S*|ambox|"
                             r"mw-cite-backlink|toc|cookie\S*|breadcrumb\S*|skip-link|sr-only|visually-hidden|p-lang\S*|"
-                            r"mw-hidden-catlinks|portal)", re.I)     # appliqué à chaque classe/id ENTIER (fullmatch)
+                            r"mw-hidden-catlinks|portal)", re.I)      # appliqué à chaque classe/id ENTIER (fullmatch)
     NEVER_HIDE = {"html", "body", "head", "main", "article"}          # conteneurs : une classe « décor » sur <html>/<body> ne doit jamais masquer la page
     NEVER_HIDE_IDS = {"content", "bodycontent", "mw-content-text", "mw-content-container", "main-content", "main"}
     HIDE_ROLE  = {"navigation", "banner", "contentinfo", "complementary", "search"}
@@ -1944,14 +1944,18 @@ def _normalize_url(url: str) -> str:
     url = url.strip()
     return urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
 
-def _web_get(url: str, accept: str = "text/html,text/plain,application/pdf;q=0.9,*/*;q=0.1") -> tuple:
-    """(url_finale, content_type, octets, tronqué). Lève _WebError."""
+def _web_get(url: str, accept: str = "text/html,text/plain,application/pdf;q=0.9,*/*;q=0.1", data: dict = None) -> tuple:
+    """(url_finale, content_type, octets, tronqué, charset). Lève _WebError. `data` (dict) → requête POST de formulaire."""
     url = _normalize_url(url)
     ok, why = _url_is_safe(url)
     if not ok:
         raise _WebError(why)
-    req = urllib.request.Request(url, headers={"User-Agent": WEB_USER_AGENT, "Accept": accept,
-                                               "Accept-Encoding": "identity", "Accept-Language": "fr,en;q=0.7"})
+    hdrs = {"User-Agent": WEB_USER_AGENT, "Accept": accept, "Accept-Encoding": "identity", "Accept-Language": "fr,en;q=0.7"}
+    body = None
+    if data is not None:
+        body = urllib.parse.urlencode(data).encode("utf-8")
+        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
+    req = urllib.request.Request(url, data=body, headers=hdrs)
     try:
         with _web_opener().open(req, timeout=WEB_TIMEOUT) as resp:
             ctype = (resp.headers.get("Content-Type") or "").lower()
@@ -2087,24 +2091,100 @@ class _DDGParser(HTMLParser):
         q = urllib.parse.parse_qs(urllib.parse.urlsplit(href).query)
         return q["uddg"][0] if "uddg" in q else href
 
-def _web_search_ddg(query: str, n: int = 6) -> list:
-    """[(titre, url, extrait)] — lève _WebError."""
-    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query, "kl": "fr-fr"})
-    final, ctype, raw, _cut, charset = _web_get(url, accept="text/html")
+def _ddg_results(raw: bytes, charset, n: int) -> list:
+    """Résultats d'une page DuckDuckGo (version « html » puis, si le balisage a changé, repli générique sur
+    les liens de redirection `uddg=`). [(titre, url, extrait)]"""
+    html = raw.decode(charset or "utf-8", errors="replace")
     p = _DDGParser()
-    p.feed(raw.decode(charset or "utf-8", errors="replace"))
-    out = []
-    for r in p.results:
-        u = r["url"]
+    try:
+        p.feed(html)
+    except Exception:
+        pass
+    items = [(r["title"], r["url"], r["snippet"]) for r in p.results]
+    if not items:                                    # balisage inconnu : tout lien passant par la redirection DDG
+        for m in re.finditer(r"<a\b[^>]*href=[\"']([^\"']*uddg=[^\"']+)[\"'][^>]*>(.*?)</a>", html, re.S | re.I):
+            items.append((re.sub(r"<[^>]+>", "", m.group(2)), _DDGParser._real_url(m.group(1).replace("&amp;", "&")), ""))
+    out, seen = [], set()
+    for t, u, sn in items:
         host = (urllib.parse.urlsplit(u).hostname or "")
-        if not u.startswith("http") or host.endswith("duckduckgo.com"):
-            continue          # publicités et liens internes
-        out.append((_clean_untrusted_text(r["title"])[:150], u, _clean_untrusted_text(r["snippet"])[:250]))
+        if not u.startswith("http") or host.endswith("duckduckgo.com") or u in seen:
+            continue          # publicités, liens internes, doublons
+        seen.add(u)
+        out.append((_clean_untrusted_text(t)[:150], u, _clean_untrusted_text(sn)[:250]))
         if len(out) >= n:
             break
-    if not out:
-        raise _WebError("aucun résultat exploitable (DuckDuckGo a peut-être limité l'accès ou changé son format)")
     return out
+
+def _ddg_lite_results(raw: bytes, charset, n: int) -> list:
+    """Version « lite » de DuckDuckGo : liens `result-link`, extraits `result-snippet`."""
+    html = raw.decode(charset or "utf-8", errors="replace")
+    links = []
+    for m in re.finditer(r"<a\b([^>]*)>(.*?)</a>", html, re.S | re.I):
+        attrs = m.group(1)
+        if "result-link" not in attrs:
+            continue
+        h = re.search(r"href=[\"']([^\"']+)[\"']", attrs)
+        if h:
+            links.append((re.sub(r"<[^>]+>", "", m.group(2)), _DDGParser._real_url(h.group(1).replace("&amp;", "&"))))
+    snips = [re.sub(r"<[^>]+>", "", x) for x in re.findall(r"result-snippet[\"'][^>]*>(.*?)</td>", html, re.S | re.I)]
+    out = []
+    for k, (t, u) in enumerate(links):
+        if u.startswith("//"):
+            u = "https:" + u
+        host = (urllib.parse.urlsplit(u).hostname or "")
+        if not u.startswith("http") or host.endswith("duckduckgo.com"):
+            continue
+        out.append((_clean_untrusted_text(t)[:150], u, _clean_untrusted_text(snips[k] if k < len(snips) else "")[:250]))
+        if len(out) >= n:
+            break
+    return out
+
+def _wiki_search_results(query: str, n: int) -> list:
+    """Dernier recours (aucune page anti-robot) : recherche Wikipédia fr puis en."""
+    import html as _html
+    for host in ("fr.wikipedia.org", "en.wikipedia.org"):
+        try:
+            d = _wiki_api(host, action="query", list="search", srsearch=query, srlimit=n, srnamespace=0)
+        except (_WebError, ValueError):
+            continue
+        out = []
+        for hit in (d.get("query") or {}).get("search") or []:
+            title = hit.get("title", "")
+            snippet = _html.unescape(re.sub(r"<[^>]+>", "", hit.get("snippet", "")))
+            out.append((_clean_untrusted_text(title)[:150],
+                        f"https://{host}/wiki/" + urllib.parse.quote(title.replace(" ", "_"), safe="_(),'!*~-."),
+                        _clean_untrusted_text(snippet)[:250]))
+        if out:
+            return out
+    return []
+
+def _web_search(query: str, n: int = 6) -> tuple:
+    """Recherche web → ([(titre, url, extrait)], source). Essaie DuckDuckGo (formulaire POST, plus fiable que GET
+    face à la protection anti-robot), sa version « lite », puis Wikipédia en dernier recours. Lève _WebError
+    avec la raison de chaque échec."""
+    raisons = []
+    essais = (
+        ("DuckDuckGo", "https://html.duckduckgo.com/html/", {"q": query, "kl": "fr-fr"}, _ddg_results),
+        ("DuckDuckGo (lite)", "https://lite.duckduckgo.com/lite/", {"q": query, "kl": "fr-fr"}, _ddg_lite_results),
+    )
+    for nom, url, data, parseur in essais:
+        try:
+            _f, _c, raw, _cut, charset = _web_get(url, accept="text/html", data=data)
+            res = parseur(raw, charset, n)
+            if res:
+                return res, nom
+            raisons.append(f"{nom} : aucun résultat (page de vérification anti-robot ou format modifié)")
+        except _WebError as e:
+            raisons.append(f"{nom} : {e}")
+    res = _wiki_search_results(query, n)
+    if res:
+        return res, "Wikipédia (DuckDuckGo indisponible)"
+    raisons.append("Wikipédia : aucun résultat")
+    raise _WebError("aucun résultat exploitable — " + " ; ".join(raisons))
+
+def _web_search_ddg(query: str, n: int = 6) -> list:
+    """Compatibilité : liste seule (voir _web_search)."""
+    return _web_search(query, n)[0]
 
 # ── État « web » du tour en cours (liste blanche d'hôtes + marqueur de contamination) ─────────────
 _WEB_TURN = {"used": False, "hosts": set()}
@@ -2154,7 +2234,7 @@ def tool_web_search(args: str) -> str:
     if not q:
         return "❌ Usage : /tool web_search <requête>"
     try:
-        res = _web_search_ddg(q)
+        res, source = _web_search(q)
     except _WebError as e:
         return f"❌ Recherche web impossible : {e}"
     _WEB_TURN["used"] = True
@@ -2164,7 +2244,7 @@ def tool_web_search(args: str) -> str:
             _WEB_TURN["hosts"].add(h.lower())
     log_event("web_search", q[:120])
     lines = [f"{i}. {t}\n   {u}\n   {s}" for i, (t, u, s) in enumerate(res, 1)]
-    return _wrap_untrusted("DuckDuckGo", "\n".join(lines))[:WEB_TOOL_RESULT_CAP + 400]
+    return _wrap_untrusted(source, "\n".join(lines))[:WEB_TOOL_RESULT_CAP + 400]
 
 _BORING_HEADINGS = re.compile(r"^(?:notes?(?: et références)?|références?|voir aussi|liens? externes?|articles? connexes?|"
                               r"bibliographie|sources?|navigation|portails?|sommaire|catégories?)\b", re.I)
@@ -2279,11 +2359,13 @@ def browse_to_attachment(url: str) -> tuple:
 def cmd_browser_search(query: str) -> None:
     global _LAST_SEARCH
     try:
-        res = _web_search_ddg(query)
+        res, source = _web_search(query)
     except _WebError as e:
         console.print(f"  [red]❌ Recherche impossible : {rich_escape(str(e))}[/]\n")
         return
     _LAST_SEARCH = res
+    if not source.startswith("DuckDuckGo"):
+        console.print(f"  [yellow]ℹ️  Source : {rich_escape(source)}[/]")
     for i, (t, u, s) in enumerate(res, 1):
         console.print(f"  [bold]{i}.[/] {rich_escape(t)}\n     [cyan]{rich_escape(u)}[/]\n     [white dim]{rich_escape(s)}[/]")
     console.print("  [white dim]/browser N ouvre un résultat (joint la page comme /file) ; "
@@ -4935,6 +5017,7 @@ def show_help():
         ("/new",          "/new",                                                "Nouvelle session (archive l'ancienne)"),
         ("/sessions",     "/sessions  |  /resume 2",                             "Liste / reprend une session"),
         ("/undo",         "/undo  |  /undo list",                                "Annule le dernier tour"),
+        ("/retry",        "/retry",                                              "Relance ton dernier message"),
         ("/github",       "/github  |  /github sync [dépôt]",                    "État des dépôts / synchronise"),
         ("/tasks",        "/tasks",                                              "Fonds, cron, /scan, processus"),
         ("/history",      "(lire les échanges)",                                 "Affiche les échanges"),
@@ -5112,11 +5195,10 @@ def _doctor_check_events_log() -> tuple[str, str]:
         if not lignes:
             return ("✅", "aucun événement journalisé")
         cutoff = datetime.now() - timedelta(hours=24)
-        # Un /doctor -fix acquitte tout ce qui a été journalisé jusqu'à son
-        # propre horodatage : les anomalies déjà vues et traitées lors de ce
-        # passage ne doivent pas continuer à faire clignoter ce check pendant
-        # encore 24h. Le journal lui-même n'est jamais modifié ni tronqué —
-        # on décale seulement la fenêtre d'observation.
+        # Un /doctor -fix acquitte tout ce qui a été journalisé jusqu'à son propre horodatage : 
+        # les anomalies déjà vues et traitées lors de ce passage ne doivent pas continuer 
+        # à faire clignoter ce check pendant encore 24h. Le journal lui-même n'est jamais modifié 
+        # ni tronqué — on décale seulement la fenêtre d'observation.
         dernier_fix = None
         for ligne in lignes:
             if "[doctor_fix]" in ligne:
@@ -6087,6 +6169,7 @@ def main():
     print_banner(len(skills_index), len(history))
     console.print("  [white]💡 Embedding en cours de chargement en arrière-plan…[/]\n")
 
+    _last_prompt = ""      # dernier vrai message (hors commandes) : relancé par /retry
     while True:
         try:
             user_input = _safe_input(_prompt_label()).strip()
@@ -6189,7 +6272,14 @@ def main():
                 continue
             user_input = bquestion
 
-        if user_input.lower() == "/quota":
+        if user_input.lower() == "/retry":
+            if not _last_prompt:
+                console.print("  [yellow]Rien à relancer : aucun message envoyé depuis le démarrage.[/]\n")
+                continue
+            user_input = _last_prompt
+            console.print(f"  [white dim]🔁 Relance : {rich_escape(user_input[:100])}{'…' if len(user_input) > 100 else ''}[/]")
+            console.print("  [white dim](pour refaire une réponse déjà donnée sans doublon dans la mémoire : /undo puis /retry)[/]")
+        elif user_input.lower() == "/quota":
             _print_quota()
             continue
 
@@ -6201,6 +6291,7 @@ def main():
             skills_index = handle_command(user_input, skills_index) or skills_index
             history = load_history()      # /clear (ou autre commande) a pu modifier le fichier : sinon l'ancien historique repartait au tour suivant
             continue
+        _last_prompt = user_input
 
         # ── Skill auto-détecté au tour précédent ? ──
         # On le propose ici, avant de traiter le nouveau message, 
@@ -6266,8 +6357,7 @@ def main():
         response, action_log = run_agentic_turn(system_prompt, history, user_input,
                                                  _terminal_tool_confirm)
         if response.startswith("⚠  Requête trop volumineuse") and _LIMIT_LEARNED[0]:
-            # Le quota réel était plus bas que le tableau : on refait l'extraction avec le
-            # plafond corrigé et on relance UNE fois.
+            # Le quota réel était plus bas que le tableau : on refait l'extraction avec le plafond corrigé et on relance UNE fois.
             _LIMIT_LEARNED[0] = False
             console.print("  [cyan]🔁 Nouvel essai avec les plafonds ajustés au quota réel…[/]")
             att_turn = _attachment_for_turn(user_input)
