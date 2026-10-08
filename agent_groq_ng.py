@@ -2374,7 +2374,7 @@ def cmd_browser_search(query: str) -> None:
 TOOLS = {
     "date":              "Affiche la date & l'heure",
     "calc":              "Calcule expression math.                      ex: /tool calc 2*10",
-    "shell":             "Exécute une cde simple                        ex: /tool shell df -h | ls -la | ...",
+    "shell":             "Exécute une cde simple                        ex: /tool shell df -h | ls -la",
     "read":              "Lit un fichier texte                          ex: /tool read ~/notes.txt",
     "search":            "Rech. sémantique Mém.                         ex: /tool search raspberry",
     "mem":               "Affiche la mémoire longue                     ex: /tool mem",
@@ -2388,9 +2388,9 @@ TOOLS = {
     "net":               "Teste connexion réseau (ping)                 ex: /tool net api.groq.com",
     "notify":            "Envoie message Telegram                       ex: /tool notify Tâche terminée",
     "cron":              "Gère les tâches planifiées                    ex: /tool cron list | add | remove",
-    "run":               "Lance un script autonome autorisé             ex: /tool run emails_scan --live",
-    "web_search":        "Recherche sur Internet (DuckDuckGo)           ex: /tool web_search lean management",
-    "web_fetch":         "Lit une page web (texte)                      ex: /tool web_fetch https://fr.wikipedia.org/wiki/Linux",
+    "run":               "Lance un script autonome                      ex: /tool run emails_scan --live",
+    "web_search":        "Recherche Internet (DuckDuckGo)               ex: /tool web_search lean management",
+    "web_fetch":         "Lit une page web (txt)                        ex: /tool web_fetch https://fr.wikipedia.org/wiki/Linux",
 }
 
 # Outils à effet de bord persistant ou sortant : une confirmation explicite est
