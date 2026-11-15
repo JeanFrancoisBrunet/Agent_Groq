@@ -37,7 +37,7 @@
 #    (voir TOOLS_REQUIRING_CONFIRMATION dans le TOOL EXECUTOR).
 #
 #    /tool run <nom> lance un script externe listé dans LAUNCHABLE_SCRIPTS 
-#    (liste blanche fermée : emails_scan, suivi_timekeeping_omega, ...). 
+#    (liste blanche fermée : emails_scan, suivi_timekeeping_omega, veille_news, ...). 
 #    Confirmation conditionnelle : dry-run/lecture seule reste autonome,
 #    tout argument marqué à risque (ex. --live) déclenche la confirmation
 #    comme write/cron. Aucune commande arbitraire n'est jamais acceptée
@@ -227,7 +227,39 @@ LAUNCHABLE_SCRIPTS = {
         "confirm_if_contains": set(),   # aucune action à risque : lecture web + écriture CSV
                                         # append-only, déjà exécuté sans supervision via cron
     },
+    "veille_news": {      # nom volontairement distinct de « la veille » (= le jour précédent) ; le script reste veille.py (cron inchangé)
+        "path": Path.home() / "Projects" / "Groq_agent" / "Veille" / "veille.py",
+        "description": "Veille d'actualités (thèmes et sources dans veille.yaml) : digest Telegram",
+        # Options de veille.py autorisées. Sans option, l'agent lance --status (lecture seule).
+        # --dry-run = simulation (rien envoyé, rien mémorisé) ; le passage normal est fait par le cron.
+        "allowed_arg_patterns": [
+            r"^--(status|check|dry-run|no-llm|force|theme|freq|on|off|reset)$",
+            r"^[a-z0-9_]{1,30}$",            # nom de thème, ou nombre d'heures entier
+            r"^\d{1,3}\.\d$",               # nombre d'heures décimal (ex. 0.5)
+        ],
+        "timeout": 300,                       # secondes : lecture des sources + 1 appel IA par thème
+        # --force envoie un vrai digest ; --freq/--on/--off/--reset modifient l'état de la veille.
+        "confirm_if_contains": {"--force", "--freq", "--on", "--off", "--reset"},
+    },
 }
+
+_VEILLE_OPT_RE = re.compile(
+    r"^(status|check|dry-run|no-llm|force|(theme|on|off|reset):[a-z0-9_]{1,30}"
+    r"|freq:[a-z0-9_]{1,30}:(\d{1,3}(\.\d)?))$")
+
+def _veille_args(options) -> list:
+    """Traduit le paramètre « options » du function-calling en arguments de veille.py.
+    Seules les formes de _VEILLE_OPT_RE sont retenues (le reste est ignoré) ;
+    sans option valide : --status (lecture seule), jamais un passage réel."""
+    out = []
+    for tok in re.split(r"[\s,]+", str(options or "").strip().lower()):
+        if tok and _VEILLE_OPT_RE.match(tok):
+            if ":" in tok:
+                flag, *vals = tok.split(":")
+                out += ["--" + flag] + vals
+            else:
+                out.append("--" + tok)
+    return out or ["--status"]
 
 def log_event(kind: str, message: str):
     """Journalise un événement non bloquant (anomalie, avertissement) dans events.log, 
@@ -491,6 +523,10 @@ def init():
             readline.read_history_file(str(_RL_HISTORY))
         readline.set_history_length(-1)   # pas de troncature auto : purge par lots dans _save_keyboard_history()
         readline.parse_and_bind("tab: complete")
+        if os.environ.get("AGENT_HSCROLL") == "1":
+            # Secours si un terminal ne répond pas à la sonde de largeur (voir _probe_terminal_width) :
+            # la ligne saisie défile horizontalement au lieu de passer à la ligne.
+            readline.parse_and_bind("set horizontal-scroll-mode on")
     except Exception:
         pass
     accueil = SKILLS_DIR / "accueil.md"
@@ -516,12 +552,17 @@ des skills et d'exécuter des outils. Invite l'utilisateur à explorer.
 #    De plus, SIGWINCH arrive parfois avant que le kernel ait propagé les
 #    nouvelles dimensions dans TIOCGWINSZ → race condition.
 #
+#  Cause constatée du retour en début de ligne (le texte long écrase le prompt) :
+#    la largeur connue du noyau (stty size) est plus petite que celle du terminal
+#    réel, sans qu'aucun redimensionnement ne la corrige. 0. _probe_terminal_width()
+#    interroge donc le terminal lui-même avant chaque saisie et corrige le noyau.
+#
 #  Stratégie retenue (3 niveaux) :
 #    1. _sync_terminal_size() : force le kernel à synchroniser TIOCGWINSZ
 #       puis positionne la variable d'env COLUMNS que readline lit en priorité.
-#       Appelé avant chaque input() ET dans le handler SIGWINCH.
-#    2. Handler SIGWINCH avec délai 50 ms : laisse le kernel propager les
-#       nouvelles dimensions avant de relire et redessiner.
+#       Appelé avant chaque input().
+#    2. Aucun handler SIGWINCH : readline gère lui-même le redimensionnement
+#       pendant la saisie (un handler Python le désynchronise).
 #    3. Effacement \033[2K\r avant chaque prompt : élimine tout résidu
 #       graphique laissé par un resize ou un thread d'affichage concurrent.
 #
@@ -529,47 +570,95 @@ des skills et d'exécuter des outils. Invite l'utilisateur à explorer.
 #  correctement la longueur VISIBLE du prompt (zéro largeur pour les codes).
 
 import termios
+import select
 import time
 import struct
 
-def _sync_terminal_size() -> int:
-    """Lit les dimensions réelles du terminal via ioctl et met à jour COLUMNS.
-    Retourne la largeur courante (colonnes), ou 80 par défaut.
-    Cette lecture force la synchronisation noyau avant que readline ne l'interroge."""
+_probe_enabled = True    # passe à False si le terminal ne répond pas à la question de largeur (évite tout délai)
+
+def _probe_terminal_width(timeout: float = 0.25):
+    """Demande au TERMINAL lui-même sa largeur réelle (et non au noyau).
+
+    Cause du bug « le texte long revient écraser le début du prompt » : la taille
+    que le noyau connaît pour ce terminal (stty size) peut être plus petite que la
+    fenêtre réelle (taille jamais propagée : session distante, multiplexeur,
+    terminal intégré…). readline croit alors être au bord droit, renvoie le curseur
+    en début de ligne, et le terminal, plus large, n'a pas passé à la ligne.
+    Méthode : curseur tout à droite + demande de position (CSI 6 n) ; la colonne
+    rapportée est la largeur réelle. Retourne None si pas de réponse.
+    Ne doit être appelée que depuis le thread principal, hors input()."""
+    global _probe_enabled
+    if not _probe_enabled:
+        return None
     try:
-        # ioctl TIOCGWINSZ : retourne (rows, cols, xpix, ypix) en 4 × uint16
-        buf = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b'\x00' * 8)
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            return None
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+    except Exception:
+        return None
+    buf = b""
+    try:
+        new = termios.tcgetattr(fd)
+        new[3] &= ~(termios.ECHO | termios.ICANON)      # pas d'écho, lecture octet par octet
+        new[6][termios.VMIN], new[6][termios.VTIME] = 0, 0
+        termios.tcsetattr(fd, termios.TCSADRAIN, new)
+        sys.stdout.write("\0337\033[999C\033[6n\0338")   # sauve le curseur, va à droite, demande, restaure
+        sys.stdout.flush()
+        end = time.time() + timeout
+        while time.time() < end and not re.search(rb"\x1b\[\d+;\d+R", buf):
+            r, _, _ = select.select([fd], [], [], max(0.0, end - time.time()))
+            if r:
+                buf += os.read(fd, 64)
+    except Exception:
+        buf = b""
+    finally:
+        try:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except Exception:
+            pass
+    m = re.search(rb"\x1b\[(\d+);(\d+)R", buf)
+    if not m:
+        _probe_enabled = False          # ce terminal ne répond pas : on n'insiste plus
+        return None
+    cols = int(m.group(2))
+    return cols if 20 <= cols <= 1000 else None
+
+
+def _sync_terminal_size(probe: bool = False) -> int:
+    """Synchronise la taille du terminal pour readline et rich ; retourne la largeur.
+
+    Lit la taille connue du noyau (ioctl TIOCGWINSZ). Avec probe=True (avant une
+    saisie, thread principal uniquement) vérifie aussi auprès du terminal : si sa
+    largeur réelle diffère, corrige la taille du noyau (TIOCSWINSZ) pour que
+    readline passe à la ligne au bon endroit. Met à jour COLUMNS/LINES."""
+    try:
+        fdo = sys.stdout.fileno()
+        buf = fcntl.ioctl(fdo, termios.TIOCGWINSZ, b'\x00' * 8)
         rows, cols = struct.unpack('HHHH', buf)[:2]
+        if probe:
+            real = _probe_terminal_width()
+            if real and real != cols:
+                try:
+                    fcntl.ioctl(fdo, termios.TIOCSWINSZ, struct.pack('HHHH', rows, real, 0, 0))
+                    cols = real
+                except Exception:
+                    pass
         if cols > 0:
-            os.environ['COLUMNS'] = str(cols)   # readline lit cette var en priorité
+            os.environ['COLUMNS'] = str(cols)   # readline et rich lisent cette variable
             os.environ['LINES']   = str(rows)
             return cols
     except Exception:
         pass
     return int(os.environ.get('COLUMNS', '80'))
 
-# Flag partagé : un resize a eu lieu pendant la saisie → on doit redessiner
-_resize_pending = False
-
-def _handle_sigwinch(signum, frame):
-    """Handler SIGWINCH : attend 50 ms puis resynchronise et redessine.
-    Le délai évite la race condition entre le signal et la mise à jour TIOCGWINSZ."""
-    global _resize_pending
-    _resize_pending = True
-    def _delayed():
-        time.sleep(0.05)          # laisse le kernel propager les nouvelles dimensions
-        _sync_terminal_size()
-        try:
-            readline.redisplay()  # recalcule avec la nouvelle largeur
-        except Exception:
-            pass
-    threading.Thread(target=_delayed, daemon=True).start()
-
-# Installation globale du handler (une seule fois, thread principal)
-try:
-    signal.signal(signal.SIGWINCH, _handle_sigwinch)
-except (OSError, ValueError):
-    pass  # OS sans SIGWINCH (Windows) ou thread non-principal
+# Aucun handler SIGWINCH personnalisé : le module readline de Python traite lui-même le
+# redimensionnement pendant input(). Tout handler Python installé ici (même un simple
+# redessin, ou une mise à jour de COLUMNS) désynchronisait readline : après un
+# changement de largeur, la flèche gauche ne remontait plus à la ligne précédente
+# (reproduit en terminal simulé, résolu en retirant le handler). La taille est
+# resynchronisée avant chaque saisie par _safe_input().
+_resize_pending = False   # conservé pour compatibilité (plus modifié par un signal)
 
 
 def _prompt_label() -> str:
@@ -605,9 +694,9 @@ def _safe_input(label: str) -> str:
       - readline reçoit alors les dimensions à jour et place le curseur correctement."""
     global _resize_pending
     _resize_pending = False
-    _sync_terminal_size()
-    sys.stdout.write('\033[2K\r')
+    sys.stdout.write('\033[2K\r')          # ligne propre avant la sonde
     sys.stdout.flush()
+    _sync_terminal_size(probe=True)         # noyau + largeur réelle demandée au terminal
     return input(make_prompt(label))
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2388,7 +2477,7 @@ TOOLS = {
     "net":               "Teste connexion réseau (ping)                 ex: /tool net api.groq.com",
     "notify":            "Envoie message Telegram                       ex: /tool notify Tâche terminée",
     "cron":              "Gère les tâches planifiées                    ex: /tool cron list | add | remove",
-    "run":               "Lance un script autonome                      ex: /tool run emails_scan --live",
+    "run":               "Lance un script autonome                      ex: /tool run veille_news --status",
     "web_search":        "Recherche Internet (DuckDuckGo)               ex: /tool web_search lean management",
     "web_fetch":         "Lit une page web (txt)                        ex: /tool web_fetch https://fr.wikipedia.org/wiki/Linux",
 }
@@ -2976,15 +3065,27 @@ TOOL_SCHEMA_SPEC = {
                                    "voir LAUNCHABLE_SCRIPTS). Actuellement disponibles : emails_scan "
                                    "(scan/classement des emails Gmail+Outlook JFBConseils) et "
                                    "suivi_timekeeping_omega (relevé de prix Omega sur timekeeping.fr, "
-                                   "aucun argument accepté pour ce dernier).",
+                                   "aucun argument accepté pour ce dernier) et "
+                                   "veille_news (NEWS, NOUVELLES et ACTUALITÉS surveillées automatiquement pour l'utilisateur : "
+                                   "sources Lean / IA / Reachy, digest Telegram, thèmes, fréquences, sources en échec ; "
+                                   "à utiliser pour « mes news », « mes nouvelles », « mon actualité », « ma veille » ; "
+                                   "utiliser le paramètre options).",
                            "params": [("script", "string", "Nom du script à lancer, ex: emails_scan "
-                                                            "ou suivi_timekeeping_omega", True),
+                                                            "suivi_timekeeping_omega ou veille_news", True),
                                       ("live", "boolean", "true = actions réelles (déplacement, suppression, "
                                                            "envoi) ; false/absent = simulation dry-run sans "
                                                            "aucun risque. Ignoré par suivi_timekeeping_omega.", False),
                                       ("since_days", "string", "Optionnel : limite la fenêtre de récupération "
                                                                 "à N jours (ex: 30, pour un premier scan). "
-                                                                "Ignoré par suivi_timekeeping_omega.", False)]},
+                                                                "Ignoré par suivi_timekeeping_omega.", False),
+                                      ("options", "string", "Uniquement pour le script veille_news, séparées par des espaces : "
+                                                             "status (thèmes, fréquences, dernier passage), "
+                                                             "check (tester les sources), dry-run (simulation sans envoi), "
+                                                             "no-llm, force, theme:<nom>, freq:<nom>:<heures>, "
+                                                             "on:<nom>, off:<nom>, reset:<nom>. "
+                                                             "Absent = status. Exemples de demandes : « quelles sont mes news ? », "
+                                                             "« état de ma veille », « teste les sources des news », "
+                                                             "« passe les news Lean à 12 h ».", False)]},
 }
 
 def _tool_openai_schemas() -> list[dict]:
@@ -3033,6 +3134,8 @@ def _tool_args_from_call(tool_name: str, arguments: dict) -> tuple[str, str]:
     if tool_name == "run":
         script = str(arguments.get("script", "")).strip()
         parts = [script] if script else []
+        if script in ("veille", "veille_news"):       # « veille » toléré : le modèle peut reprendre le mot de l'utilisateur
+            return "run", " ".join(["veille_news"] + _veille_args(arguments.get("options")))
         if arguments.get("live"):
             parts.append("--live")
         since = arguments.get("since_days")
@@ -3216,7 +3319,8 @@ _TOOL_TRIGGERS = {
     "cron_list":         ("cron", "planif", "tâche", "tache"),
     "cron_add":          ("cron", "planif", "tâche", "tache", "quotidien", "chaque"),
     "cron_remove":       ("cron", "planif", "tâche", "tache"),
-    "run":               ("scan", "mail", "omega", "timekeeping", "lance", "run"),
+    "run":               ("scan", "mail", "omega", "timekeeping", "lance", "run",
+                          "veille", "news", "nouvelle", "actualit", "digest"),
     "web_search":        ("internet", "web", "recherch", "cherche", "actualit", "google", "wikipedia",
                           "en ligne", "dernières nouvelles", "derniere", "prix", "météo", "meteo"),
     "web_fetch":         ("http", "www.", ".com", ".fr", ".org", ".net", "site", "page", "lien", "url",
@@ -3399,6 +3503,7 @@ def run_agentic_turn(system_prompt: str, history: list, user_message: str,
         })
 
         step_results: list[tuple[str, str]] = []
+        verbatim: list[str] = []      # sorties à afficher telles quelles (voir plus bas)
         for tc in msg.tool_calls:
             fn_name = tc.function.name
             try:
@@ -3421,12 +3526,20 @@ def run_agentic_turn(system_prompt: str, history: list, user_message: str,
                 action_log.append(f"🔧 {fn_name} → exécuté")
 
             result = result if isinstance(result, str) else str(result)
+            if real_tool == "run" and args_str.split()[:1] == ["veille_news"]:
+                verbatim.append(result)
             messages.append({"role": "tool", "tool_call_id": tc.id,
                              "content": result[:(WEB_TOOL_RESULT_CAP + 400) if fn_name.startswith("web_") else TOOL_RESULT_CAP]})
             executed = True
             step_results.append((fn_name, result))
             first = result.strip().splitlines()[0][:300] if result.strip() else "(aucun résultat)"
             summaries.append(first)
+
+        # Veille : la sortie de veille.py (état, test des sources, simulation) est affichée telle
+        # quelle. Le modèle ne la reformule pas : il y ajoutait des détails inventés (date, « aucune
+        # alerte ») et déplaçait des colonnes. Aucun nouvel appel au modèle : économie de tokens.
+        if step_results and len(verbatim) == len(step_results):
+            return "\n\n".join(verbatim), action_log
 
         if step_results and all(n in _TERMINAL_TOOLS and r.lstrip().startswith(("✅", "⛔"))
                                 for n, r in step_results):
