@@ -225,7 +225,7 @@ LAUNCHABLE_SCRIPTS = {
         # Options de veille.py autorisées. Sans option, l'agent lance --status (lecture seule).
         # --dry-run = simulation (rien envoyé, rien mémorisé) ; le passage normal est fait par le cron.
         "allowed_arg_patterns": [
-            r"^--(status|check|dry-run|no-llm|force|theme|freq|on|off|reset)$",
+            r"^--(status|check|dry-run|no-llm|force|theme|freq|on|off|reset|reset-votes)$",
             r"^[a-z0-9_]{1,30}$",            # nom de thème, ou nombre d'heures entier
             r"^\d{1,3}\.\d$",               # nombre d'heures décimal (ex. 0.5)
         ],
@@ -236,7 +236,7 @@ LAUNCHABLE_SCRIPTS = {
 }
 
 _VEILLE_OPT_RE = re.compile(
-    r"^(status|check|dry-run|no-llm|force|(theme|on|off|reset):[a-z0-9_]{1,30}"
+    r"^(status|check|dry-run|no-llm|force|reset-votes|(theme|on|off|reset):[a-z0-9_]{1,30}"
     r"|freq:[a-z0-9_]{1,30}:(\d{1,3}(\.\d)?))$")
 
 def _veille_args(options) -> list:
@@ -4319,8 +4319,10 @@ def get_client():
                                 timeout=NETWORK_TIMEOUT, max_retries=0)
     return client
 
-def send_telegram_notification(message: str) -> tuple[bool, str]:
+def send_telegram_notification(message: str, reply_markup: dict | None = None) -> tuple[bool, str]:
     """Envoie un message via l'API Telegram, en lisant ~/.telegram_config.
+    reply_markup (facultatif) : clavier inline au format de l'API Telegram,
+    {"inline_keyboard": [[{"text": ..., "callback_data": ...}]]} (boutons traités par le bot).
     Indépendant du process du bot : fonctionne aussi bien depuis le terminal
     que depuis une tâche cron headless, tant que le fichier de config existe.
     Retourne (succès, détail_erreur_si_échec)."""
@@ -4335,7 +4337,10 @@ def send_telegram_notification(message: str) -> tuple[bool, str]:
         return (False, f"format de config Telegram invalide : {e}")
 
     url  = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({"chat_id": chat_id, "text": message[:4000]}).encode("utf-8")
+    fields = {"chat_id": chat_id, "text": message[:4000]}
+    if reply_markup:
+        fields["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+    data = urllib.parse.urlencode(fields).encode("utf-8")
     req  = urllib.request.Request(url, data=data, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=NETWORK_TIMEOUT) as resp:
