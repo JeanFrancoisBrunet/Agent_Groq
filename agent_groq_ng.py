@@ -20,28 +20,21 @@
 #    Formatter            — Rich, markdown, code, tableaux
 #
 #  Autonomie (/tool write, notify, cron, forget) :
-#    Ces 4 outils ont un effet de bord (fichier, réseau sortant, crontab,
-#    suppression définitive) et demandent donc une confirmation explicite
-#    avant exécution (terminal : O/n ; Telegram : boutons inline). "net" et
-#    "cron list" restent en lecture seule, sans confirmation. /tool cron ne
-#    programme JAMAIS de commande arbitraire : il planifie exclusivement une
-#    ré-exécution de ce script en mode --headless-task, qui ne dispose
-#    d'AUCUN outil (texte uniquement) — le résultat est écrit dans
-#    ~/Projects/Groq_agent/.myagent/workspace/ puis notifié via Telegram, 
-#    sans jamais toucher au shell ni au système.
+#    Ces 4 outils ont un effet de bord (fichier, réseau sortant, crontab, suppression définitive) 
+#    et demandent donc une confirmation explicite avant exécution (terminal : O/n ; Telegram : boutons inline).
+#    "net" et "cron list" restent en lecture seule, sans confirmation. /tool cron ne programme JAMAIS de commande arbitraire :
+#    il planifie exclusivement une ré-exécution de ce script en mode --headless-task, qui ne dispose d'AUCUN outil (texte uniquement)
+#    le résultat est écrit dans ~/Projects/Groq_agent/.myagent/workspace/ puis notifié via Telegram, sans jamais toucher au shell ni au système.
 #
-#    /tool write_skill et /tool add_theme_keyword sont volontairement EXCLUS
-#    de la confirmation : autonomie complète pour que l'agent crée/mette à jour
-#    ses propres skills et la mémoire longue, sans validation humaine. 
-#    Contrepartie : validation structurelle stricte intégrée à chacun 
-#    (voir TOOLS_REQUIRING_CONFIRMATION dans le TOOL EXECUTOR).
+#    /tool write_skill et /tool add_theme_keyword sont volontairement EXCLUS de la confirmation : 
+#    autonomie complète pour que l'agent crée/mette à jour ses propres skills et la mémoire longue, sans validation humaine. 
+#    Contrepartie : validation structurelle stricte intégrée à chacun (voir TOOLS_REQUIRING_CONFIRMATION dans le TOOL EXECUTOR).
 #
 #    /tool run <nom> lance un script externe listé dans LAUNCHABLE_SCRIPTS 
 #    (liste blanche fermée : emails_scan, suivi_timekeeping_omega, veille_news, ...). 
 #    Confirmation conditionnelle : dry-run/lecture seule reste autonome,
 #    tout argument marqué à risque (ex. --live) déclenche la confirmation
-#    comme write/cron. Aucune commande arbitraire n'est jamais acceptée
-#    par cet outil.
+#    comme write/cron. Aucune commande arbitraire n'est jamais acceptée par cet outil.
 #
 #  Dépendances :
 #    pip install openai pyyaml rich sentence-transformers numpy --break-system-packages
@@ -66,7 +59,7 @@
 #    l'agent patiente, retente ou bascule sur FALLBACK_MODEL (voir « Quotas Groq » plus bas).
 #    Suivi : /quota  ·  https://console.groq.com/settings/limits
 #
-#  Auteur : Jean-François BRUNET – JFBConseils – Octobre 2026
+#  Auteur : Jean-François BRUNET – JFBConseils – Novembre 2026
 # =============================================================================
 
 # ── variables d'env AVANT tout import ────────────────────────
@@ -195,11 +188,10 @@ CRON_TAG      = "agent_groq:managed"                   # marqueur des lignes cro
 # ------------------------------------------------------------------
 # Registre des scripts autonomes que l'agent est autorisé à lancer via
 # /tool run <nom> (Gen 1) ou l'outil function-calling "run" (Gen NG).
-# Liste blanche fermée volontairement : contrairement à "shell" (commandes
-# système en lecture seule), ces scripts ont des effets de bord réels
-# (réseau, fichiers, envoi de mails...). Chaque script doit être ajouté ici
-# explicitement — aucune commande arbitraire n'est jamais acceptée, quel
-# que soit l'argument passé par l'agent ou l'utilisateur.
+# Liste blanche fermée volontairement : contrairement à "shell" (commandes système en lecture seule), 
+# ces scripts ont des effets de bord réels (réseau, fichiers, envoi de mails...). 
+# Chaque script doit être ajouté ici explicitement — aucune commande arbitraire n'est jamais acceptée, 
+# quelque soit l'argument passé par l'agent ou l'utilisateur.
 # ------------------------------------------------------------------
 LAUNCHABLE_SCRIPTS = {
     "emails_scan": {
@@ -5122,6 +5114,7 @@ def show_help():
         ("/scan",         "/scan liste tous les personnages --out Output.txt",   "Lit TOUT le fichier joint"),
         ("/browser",      "/browser <url> [question]  |  search <termes>  |  N", "Lit une page Web"),
         ("/quota",        "/quota",                                              "Usage tokens (60s/24h) / modèle"),
+        ("/news",         "/news  |  /news check  |  /news dry-run force",       "État des actualités perso (sans IA)"),
         ("/mem",          "(lire la mémoire longue)",                            "Mémoire longue"),
         ("/remember",     "/remember J'utilise Python 3.11",                     "Mémorise un fait"),
         ("/compact",      "(synthétiser les thèmes)",                            "Consolide par thèmes"),
@@ -6394,6 +6387,17 @@ def main():
             console.print("  [white dim](pour refaire une réponse déjà donnée sans doublon dans la mémoire : /undo puis /retry)[/]")
         elif user_input.lower() == "/quota":
             _print_quota()
+            continue
+
+        if user_input.lower() == "/news" or user_input.lower().startswith("/news "):
+            # Passage direct, sans modèle : la sortie de veille.py est fiable et ne coûte aucun token.
+            # Mêmes options et mêmes confirmations que l'outil « run » (voir _veille_args).
+            vargs = " ".join(["veille_news"] + _veille_args(user_input[5:]))
+            if tool_call_needs_confirmation("run", vargs) and not _terminal_tool_confirm(
+                    "veille_news", "veille.py " + vargs.split(" ", 1)[1]):
+                console.print("  [yellow]⛔ Annulé.[/]\n")
+                continue
+            display_response(execute_tool("run", vargs))
             continue
 
         if user_input.lower() == "/scan" or user_input.lower().startswith("/scan "):
