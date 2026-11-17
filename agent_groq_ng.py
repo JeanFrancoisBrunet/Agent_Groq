@@ -31,7 +31,7 @@
 #    Contrepartie : validation structurelle stricte intégrée à chacun (voir TOOLS_REQUIRING_CONFIRMATION dans le TOOL EXECUTOR).
 #
 #    /tool run <nom> lance un script externe listé dans LAUNCHABLE_SCRIPTS 
-#    (liste blanche fermée : emails_scan, suivi_timekeeping_omega, veille_news, ...). 
+#    (liste blanche fermée : emails_scan, suivi_timekeeping_omega, veille_news, datagouv, ...). 
 #    Confirmation conditionnelle : dry-run/lecture seule reste autonome,
 #    tout argument marqué à risque (ex. --live) déclenche la confirmation
 #    comme write/cron. Aucune commande arbitraire n'est jamais acceptée par cet outil.
@@ -233,7 +233,44 @@ LAUNCHABLE_SCRIPTS = {
         # --force envoie un vrai digest ; --freq/--on/--off/--reset modifient l'état de la veille.
         "confirm_if_contains": {"--force", "--freq", "--on", "--off", "--reset"},
     },
+    "datagouv": {
+        "path": Path.home() / "Projects" / "Groq_agent" / "DataGouv" / "datagouv.py",
+        "description": "Explorer data.gouv.fr : chercher des jeux de données, détail, génération d'un programme d'exploitation",
+        # Sous-commandes : chercher | apis | infos | squelette | check | aide. Lecture seule sur le réseau ;
+        # « squelette » écrit un programme dans DataGouv/programmes/ et ne l'exécute jamais.
+        "allowed_arg_patterns": [
+            r"^[\wÀ-ÿ'’-]{1,40}$",           # sous-commande, mot-clé, n° de résultat, identifiant
+        ],
+        "timeout": 90,
+        "confirm_if_contains": set(),
+    },
 }
+
+_DATAGOUV_CMDS = ("chercher", "apis", "infos", "squelette", "siren", "check", "aide")
+_DATAGOUV_WORD_RE = re.compile(r"^[\wÀ-ÿ'’-]{1,40}$")
+
+def _datagouv_args(options) -> list:
+    """Traduit « options » en arguments de datagouv.py. 1er mot = sous-commande ; sans sous-commande
+    reconnue, tout le texte est pris comme mots-clés de recherche. Vide : aide (aucun appel réseau)."""
+    toks = [t for t in re.split(r"[\s,]+", str(options or "").strip()) if _DATAGOUV_WORD_RE.match(t)]
+    toks = [t[2:] if t.startswith("--") else t for t in toks]    # (« -- » est déjà exclu par le motif ; sécurité)
+    if not toks:
+        return ["aide"]
+    first = toks[0].lower()
+    if first in _DATAGOUV_CMDS:
+        cmd, rest = first, toks[1:]
+    else:
+        cmd, rest = "chercher", toks
+    if cmd == "siren":
+        digits = "".join(re.findall(r"\d+", " ".join(rest)))[:9]      # « 123 456 789 » ou « 123456789 »
+        return ["siren", digits] if digits else ["aide"]
+    if cmd in ("infos", "squelette"):
+        rest = rest[:2]
+    elif cmd in ("chercher", "apis"):
+        rest = rest[:8]
+    else:
+        rest = []
+    return [cmd] + rest
 
 _VEILLE_OPT_RE = re.compile(
     r"^(status|check|dry-run|no-llm|force|reset-votes|(theme|on|off|reset):[a-z0-9_]{1,30}"
@@ -3061,9 +3098,11 @@ TOOL_SCHEMA_SPEC = {
                                    "veille_news (NEWS, NOUVELLES et ACTUALITÉS surveillées automatiquement pour l'utilisateur : "
                                    "sources Lean / IA / Reachy, digest Telegram, thèmes, fréquences, sources en échec ; "
                                    "à utiliser pour « mes news », « mes nouvelles », « mon actualité », « ma veille » ; "
-                                   "utiliser le paramètre options).",
+                                   "utiliser le paramètre options) et "
+                                   "datagouv (data.gouv.fr, open data français : chercher des bases de données par mots-clés, "
+                                   "détail d'une base, API publiques, générer un programme d'exploitation ; paramètre options).",
                            "params": [("script", "string", "Nom du script à lancer, ex: emails_scan "
-                                                            "suivi_timekeeping_omega ou veille_news", True),
+                                                            "suivi_timekeeping_omega, veille_news ou datagouv", True),
                                       ("live", "boolean", "true = actions réelles (déplacement, suppression, "
                                                            "envoi) ; false/absent = simulation dry-run sans "
                                                            "aucun risque. Ignoré par suivi_timekeeping_omega.", False),
@@ -3077,7 +3116,11 @@ TOOL_SCHEMA_SPEC = {
                                                              "on:<nom>, off:<nom>, reset:<nom>. "
                                                              "Absent = status. Exemples de demandes : « quelles sont mes news ? », "
                                                              "« état de ma veille », « teste les sources des news », "
-                                                             "« passe les news Lean à 12 h ».", False)]},
+                                                             "« passe les news Lean à 12 h ». "
+                                                             "Pour le script datagouv : « chercher <mots> » (bases de données), "
+                                                             "« apis <mots> », « infos <n°> », « squelette <n°> [n° fichier] », "
+                                                             "« siren <9 chiffres> » (fiche d'une entreprise : active ou cessée, procédures collectives) "
+                                                             "(le n° est celui du dernier résultat de « chercher »).", False)]},
 }
 
 def _tool_openai_schemas() -> list[dict]:
@@ -3126,6 +3169,8 @@ def _tool_args_from_call(tool_name: str, arguments: dict) -> tuple[str, str]:
     if tool_name == "run":
         script = str(arguments.get("script", "")).strip()
         parts = [script] if script else []
+        if script in ("datagouv", "data_gouv", "data.gouv"):
+            return "run", " ".join(["datagouv"] + _datagouv_args(arguments.get("options")))
         if script in ("veille", "veille_news"):       # « veille » toléré : le modèle peut reprendre le mot de l'utilisateur
             return "run", " ".join(["veille_news"] + _veille_args(arguments.get("options")))
         if arguments.get("live"):
@@ -3312,7 +3357,9 @@ _TOOL_TRIGGERS = {
     "cron_add":          ("cron", "planif", "tâche", "tache", "quotidien", "chaque"),
     "cron_remove":       ("cron", "planif", "tâche", "tache"),
     "run":               ("scan", "mail", "omega", "timekeeping", "lance", "run",
-                          "veille", "news", "nouvelle", "actualit", "digest"),
+                          "veille", "news", "nouvelle", "actualit", "digest",
+                          "data.gouv", "datagouv", "open data", "opendata", "donnée", "donnee", "dataset",
+                          "base de", "bases de", "siren", "siret", "squelette", "api "),
     "web_search":        ("internet", "web", "recherch", "cherche", "actualit", "google", "wikipedia",
                           "en ligne", "dernières nouvelles", "derniere", "prix", "météo", "meteo"),
     "web_fetch":         ("http", "www.", ".com", ".fr", ".org", ".net", "site", "page", "lien", "url",
@@ -3518,7 +3565,7 @@ def run_agentic_turn(system_prompt: str, history: list, user_message: str,
                 action_log.append(f"🔧 {fn_name} → exécuté")
 
             result = result if isinstance(result, str) else str(result)
-            if real_tool == "run" and args_str.split()[:1] == ["veille_news"]:
+            if real_tool == "run" and args_str.split()[:1] in (["veille_news"], ["datagouv"]):
                 verbatim.append(result)
             messages.append({"role": "tool", "tool_call_id": tc.id,
                              "content": result[:(WEB_TOOL_RESULT_CAP + 400) if fn_name.startswith("web_") else TOOL_RESULT_CAP]})
@@ -5120,6 +5167,7 @@ def show_help():
         ("/browser",      "/browser <url> [question]  |  search <termes>  |  N", "Lit une page Web"),
         ("/quota",        "/quota",                                              "Usage tokens (60s/24h) / modèle"),
         ("/news",         "/news  |  /news check  |  /news dry-run force",       "État des actualités perso (sans IA)"),
+        ("/data",         "/data chercher <mots>  |  infos <n°>  |  siren <n°>", "Explorer data.gouv.fr (open data), sans IA"),
         ("/mem",          "(lire la mémoire longue)",                            "Mémoire longue"),
         ("/remember",     "/remember J'utilise Python 3.11",                     "Mémorise un fait"),
         ("/compact",      "(synthétiser les thèmes)",                            "Consolide par thèmes"),
@@ -6403,6 +6451,11 @@ def main():
                 console.print("  [yellow]⛔ Annulé.[/]\n")
                 continue
             display_response(execute_tool("run", vargs))
+            continue
+
+        if user_input.lower() == "/data" or user_input.lower().startswith("/data "):
+            # Passage direct, sans modèle : recherche et génération déterministes (voir _datagouv_args).
+            display_response(execute_tool("run", " ".join(["datagouv"] + _datagouv_args(user_input[5:]))))
             continue
 
         if user_input.lower() == "/scan" or user_input.lower().startswith("/scan "):

@@ -23,4 +23,7 @@ Recherche_immo/
 Scan_emails/
 Timekeeping/
 Veille/
+.env
 old/
+programmes/
+datagouv_last.json
