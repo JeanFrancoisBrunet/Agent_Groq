@@ -5167,7 +5167,7 @@ def show_help():
         ("/browser",      "/browser <url> [question]  |  search <termes>  |  N", "Lit une page Web"),
         ("/quota",        "/quota",                                              "Usage tokens (60s/24h) / modèle"),
         ("/news",         "/news  |  /news check  |  /news dry-run force",       "État des actualités perso (sans IA)"),
-        ("/data",         "/data chercher <mots>  |  infos <n°>  |  siren <n°>", "Explorer data.gouv.fr (open data), sans IA"),
+        ("/data",         "/data chercher <mots>  |  infos <n°>  |  siren <n°>", "Explorer data.gouv.fr (sans IA)"),
         ("/mem",          "(lire la mémoire longue)",                            "Mémoire longue"),
         ("/remember",     "/remember J'utilise Python 3.11",                     "Mémorise un fait"),
         ("/compact",      "(synthétiser les thèmes)",                            "Consolide par thèmes"),
