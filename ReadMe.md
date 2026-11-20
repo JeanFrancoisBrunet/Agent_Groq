@@ -312,26 +312,26 @@ Vérifie en un coup d'œil : clé API Groq, connectivité réseau, présence/val
 Interface Telegram qui **importe directement** les fonctions de `agent_groq_ng.py` (pas de duplication de logique) et **partage la même mémoire** (historique, mémoire longue, vecteurs) que les sessions terminal, protégée par les mêmes verrous inter-processus.
 
 ### Commandes
-| Commande                   | Description                                                              |
-|---                         |---                                                                       |
-| `/start`, `/aide`          | Message d'accueil et liste des commandes                                 |
-| `/status`                  | Modèle actif, température, tokens max, nombre de skills                  |
-| `/doctor`                  | Diagnostic système                                                       |
-| `/model`                   | Affiche les modèles disponibles (sans argument)                          |
-| `/model <n>`               | Change de modèle Groq (n = 1 à 3), boutons inline de sélection           |
-| `/clear`                   | Vide l'historique de conversation (mémoire courte)                       |
-| `/new`                     | Nouvelle session : archive la conversation puis vide la mémoire courte   |
-| `/sessions`, `/resume <n>` | Liste / reprend une session archivée (partagées avec le terminal)        |
-| `/quota`                   | Quotas Groq (60 s, 24 h, requêtes) — terminal et bot confondus           |
+| Commande                   | Description                                                                                                                   |
+|---                         |---                                                                                                                            |
+| `/start`, `/aide`          | Message d'accueil et liste des commandes                                                                                      |
+| `/status`                  | Modèle actif, température, tokens max, nombre de skills                                                                       |
+| `/doctor`                  | Diagnostic système                                                                                                            |
+| `/model`                   | Affiche les modèles disponibles (sans argument)                                                                               |
+| `/model <n>`               | Change de modèle Groq (n = 1 à 3), boutons inline de sélection                                                                |
+| `/clear`                   | Vide l'historique de conversation (mémoire courte)                                                                            |
+| `/new`                     | Nouvelle session : archive la conversation puis vide la mémoire courte                                                        |
+| `/sessions`, `/resume <n>` | Liste / reprend une session archivée (partagées avec le terminal)                                                             |
+| `/quota`                   | Quotas Groq (60 s, 24 h, requêtes) — terminal et bot confondus                                                                |
 | `/retry`                   | Relance ton dernier message texte (après une erreur ou pour une autre réponse) ; mémorisé en RAM, perdu au redémarrage du bot |
-| `/mem`                     | Affiche la mémoire longue                                                |
-| `/compact`                 | Consolide la mémoire longue par thèmes                                   |
-| `/skills`                  | Liste les skills disponibles                                             |
-| `/load <nom ou n°>`        | Affiche le contenu d'un skill                                            |
-| `/reflect`                 | Bascule le mode Self-Reflection (On/Off)                                 |
-| `/temp <val>`              | Change la température du modèle (0.0–1.0)                                |
-| `/tool <nom> [args]`       | Exécute un outil (mêmes outils que le terminal)                          |
-| `/tools`                   | Liste les outils disponibles                                             |
+| `/mem`                     | Affiche la mémoire longue                                                                                                     |
+| `/compact`                 | Consolide la mémoire longue par thèmes                                                                                        |
+| `/skills`                  | Liste les skills disponibles, **paginée** (boutons ◀ Précédent / Suivant ▶ et numéros cliquables)                           |
+| `/load <nom ou n°>`        | Affiche le contenu d'un skill (sans argument : menu de boutons, paginé par 10)                                                |
+| `/reflect`                 | Bascule le mode Self-Reflection (On/Off)                                                                                      |
+| `/temp <val>`              | Change la température du modèle (0.0–1.0)                                                                                     |
+| `/tool <nom> [args]`       | Exécute un outil (mêmes outils que le terminal)                                                                               |
+| `/tools`                   | Liste les outils disponibles                                                                                                  |
 
 > ℹ️ Côté Telegram : `/clear` = `/clear mem` (pas d'écran à effacer). Les outils `web_search`/`web_fetch` sont utilisables en dialogue libre et via `/tool` ; après une lecture web, les actions d'écriture/envoi demandent une confirmation par boutons, et aucun fait n'est extrait automatiquement du tour. Le changement de modèle n'active plus la Self-Reflection d'office (`/reflect`). `/browser`, `/undo` et `/tasks` restent propres au terminal ; `/retry` existe des deux côtés (chacun relance **son** dernier message).
 
@@ -340,6 +340,8 @@ Les outils sensibles (`write`, `notify`, `cron`, `forget`) déclenchent un messa
 
 ### 🔗 Cohérence avec le terminal
 - **Numérotation des skills** — `/skills` et `/load <n°>` trient désormais par le champ `name` du frontmatter, exactement comme en CLI (`load_skills_index()` renvoie l'ordre du système de fichiers, qui peut différer du champ `name` ; sans ce tri commun, un même numéro pouvait désigner deux skills différents selon l'interface).
+- **Pagination des listes** — Telegram limite un message à 4096 caractères et le bot coupait à 4000 : avec beaucoup de skills, les derniers n'apparaissaient pas (32 skills, 29 affichés). `/skills` découpe désormais la liste au **caractère** (pages ≤ ~3300 car., car les descriptions varient) et navigue par boutons ◀ ▶ qui **modifient le même message** ; les boutons numérotés affichent le skill (même numérotation que `/load`). `/load` sans argument est paginé par 10. Aucun skill n'est plus tronqué.
+- **Messages longs (> 4 000 caractères)** — toutes les réponses du bot passent par `_split_message()` : au lieu de couper par « … », le texte est découpé en plusieurs messages (≤ 3 900 caractères) aux fins de ligne, de préférence aux sauts de paragraphe. Un bloc de code ``` coupé en deux est refermé puis rouvert, pour que chaque message reste un Markdown valide ; les messages suivants portent « (suite 2/3) » ; les boutons inline sont attachés au **dernier** message. Une réponse de plus de 12 000 caractères (≈ 4 messages) est arrêtée avec la mention du nombre de caractères non affichés, pour ne pas inonder le chat. Cela couvre les réponses de l'agent, `/load`, les résultats d'outils et `/scan`. Si le Markdown d'un morceau est mal formé, ce morceau est envoyé en texte brut (comme avant).
 - **Modèle et température** — `maybe_reload_config()` est appelé au début de chaque message et dans `/status`/`/model`, pour refléter un changement fait depuis le terminal, avec une notice affichée si le modèle a changé entre-temps.
 
 ### 📷 Analyse d'images
@@ -555,4 +557,4 @@ Ajoutez de la même façon à chaque projet ses fichiers de config, d'historique
 
 ## Auteur
 **Jean-François Brunet** — [JFBConseils](https://github.com/JeanFrancoisBrunet)
-Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Octobre 2026*
+Consultant Lean Management — projet personnel d'un agent Groq sur Raspberry Pi 5 *Novembre 2026*
